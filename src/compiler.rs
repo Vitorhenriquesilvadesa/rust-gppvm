@@ -1,6 +1,6 @@
-use lexer::Lexer;
-
 mod lexer;
+
+use lexer::Lexer;
 
 pub struct Compiler {
     lexer: lexer::Lexer,

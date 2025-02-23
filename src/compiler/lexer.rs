@@ -1,20 +1,76 @@
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum TokenKind {
-    LeftParen,
-    RightParen,
-    Plus,
-    Minus,
-    Star,
-    Slash,
+    And,
+    As,
+    Assert,
+    Attribute,
+    Break,
     Colon,
     Comma,
-    Semicolon,
-    Indentation,
-    NewLine,
+    Continue,
+    Def,
+    DivideEqual,
+    Dot,
+    DoubleStar,
+    DoubleStarEqual,
+    Elif,
+    Else,
     EndOfFile,
+    Equal,
+    EqualEqual,
+    Except,
+    False,
+    Finally,
+    Float,
+    For,
+    From,
+    Greater,
+    GreaterEqual,
+    Hash,
+    If,
+    Import,
+    In,
+    Indentation,
+    Internal,
+    Is,
+    Lambda,
+    LeftBrace,
+    LeftBracket,
+    LeftParen,
+    Less,
+    LessEqual,
+    Minus,
+    MinusEqual,
+    NewLine,
+    Not,
+    NotEqual,
+    None,
+    Or,
+    Pass,
+    Plus,
+    PlusEqual,
+    Pragma,
+    Print,
+    Raise,
+    Return,
+    RightBrace,
+    RightBracket,
+    RightParen,
+    Slash,
+    Star,
+    StarEqual,
+    String,
+    True,
+    Try,
+    Type,
+    While,
+    With,
+    Yield,
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
@@ -42,6 +98,7 @@ pub struct Lexer {
     tokens: Vec<Token>,
 }
 
+#[allow(dead_code)]
 impl Lexer {
     pub fn new(source: String) -> Self {
         Lexer {
@@ -98,11 +155,51 @@ impl Lexer {
         };
 
         match c {
+            '#' => self.make_token(TokenKind::Hash),
+            '[' => self.make_token(TokenKind::LeftBracket),
+            ']' => self.make_token(TokenKind::RightBracket),
+            '(' => self.make_token(TokenKind::LeftParen),
+            ')' => self.make_token(TokenKind::RightParen),
+            '{' => self.make_token(TokenKind::LeftBrace),
+            '}' => self.make_token(TokenKind::RightBrace),
             '+' => self.make_token(TokenKind::Plus),
             '-' => self.make_token(TokenKind::Minus),
-            '*' => self.make_token(TokenKind::Star),
+            '*' => {
+                if self.eat('*') {
+                    if self.eat('=') {
+                        self.make_token(TokenKind::DoubleStarEqual);
+                    } else {
+                        self.make_token(TokenKind::DoubleStar);
+                    }
+                } else {
+                    self.make_token(TokenKind::Star);
+                }
+            }
             '/' => self.make_token(TokenKind::Slash),
-            other => {}
+            ',' => self.make_token(TokenKind::Comma),
+            ':' => self.make_token(TokenKind::Colon),
+            '>' => {
+                if self.eat('=') {
+                    self.make_token(TokenKind::GreaterEqual);
+                } else {
+                    self.make_token(TokenKind::Greater);
+                }
+            }
+            '<' => {
+                if self.eat('=') {
+                    self.make_token(TokenKind::LessEqual);
+                } else {
+                    self.make_token(TokenKind::Less);
+                }
+            }
+            '=' => {
+                if self.eat('=') {
+                    self.make_token(TokenKind::EqualEqual);
+                } else {
+                    self.make_token(TokenKind::Equal);
+                }
+            }
+            _ => {}
         }
 
         Token::new(TokenKind::Colon, String::from("test"), 0, 0)
@@ -132,6 +229,35 @@ impl Lexer {
         let c = self.source.chars().nth(self.start + self.length);
         self.length += 1;
         c
+    }
+
+    fn eat(&mut self, c: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+
+        if !self.check(c) {
+            return false;
+        }
+
+        self.advance();
+        return true;
+    }
+
+    fn check(&self, c: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+
+        c.eq(&self.peek().unwrap())
+    }
+
+    fn peek(&self) -> Option<char> {
+        if self.is_at_end() {
+            return None;
+        }
+
+        self.source.chars().nth(self.start + self.length)
     }
 
     fn is_at_end(&self) -> bool {

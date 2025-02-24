@@ -1,21 +1,27 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{self, Display},
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum TokenKind {
-    Operator(Operator),
-    Keyword(Keyword),
-    Punctuation(Punctuation),
+    Operator(OperatorKind),
+    Keyword(KeywordKind),
+    Punctuation(PunctuationKind),
     Literal(Literal),
     Identifier,
     EndOfFile,
     NewLine,
     Indentation,
+    Underscore,
+    Dot,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
-pub enum Operator {
+pub enum OperatorKind {
     Plus,
     Minus,
     Star,
@@ -31,11 +37,12 @@ pub enum Operator {
     GreaterEqual,
     LessEqual,
     Equal,
+    Not,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
-pub enum Keyword {
+pub enum KeywordKind {
     If,
     Else,
     Elif,
@@ -48,11 +55,15 @@ pub enum Keyword {
     Try,
     Except,
     Finally,
+    Global,
+    Type,
+    Or,
+    And,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
-pub enum Punctuation {
+pub enum PunctuationKind {
     Comma,
     Dot,
     Colon,
@@ -75,13 +86,19 @@ pub enum Literal {
     Boolean,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
     pub line: usize,
     pub column: usize,
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}: {:?}", self.kind, self.lexeme)
+    }
 }
 
 impl Token {
@@ -107,13 +124,35 @@ pub struct Lexer {
     is_line_indent: bool,
 }
 
+pub fn create_keywords() -> HashMap<String, TokenKind> {
+    let mut keywords = HashMap::new();
+    keywords.insert("def".to_string(), TokenKind::Keyword(KeywordKind::Def));
+    keywords.insert(
+        "global".to_string(),
+        TokenKind::Keyword(KeywordKind::Global),
+    );
+    keywords.insert("type".to_string(), TokenKind::Keyword(KeywordKind::Type));
+    keywords.insert("not".to_string(), TokenKind::Operator(OperatorKind::Not));
+    keywords.insert("and".to_string(), TokenKind::Operator(OperatorKind::And));
+    keywords.insert("or".to_string(), TokenKind::Operator(OperatorKind::Or));
+    keywords.insert("if".to_string(), TokenKind::Keyword(KeywordKind::If));
+    keywords.insert("else".to_string(), TokenKind::Keyword(KeywordKind::Else));
+    keywords.insert("elif".to_string(), TokenKind::Keyword(KeywordKind::Elif));
+    keywords.insert(
+        "return".to_string(),
+        TokenKind::Keyword(KeywordKind::Return),
+    );
+
+    keywords
+}
+
 #[allow(dead_code)]
 impl Lexer {
     pub fn new(source: String) -> Self {
         Lexer {
             source,
-            line: 0,
-            column: 0,
+            line: 1,
+            column: 1,
             start: 0,
             length: 0,
             tokens: Vec::new(),
@@ -125,27 +164,24 @@ impl Lexer {
     pub fn without_source() -> Self {
         Lexer {
             source: String::new(),
-            column: 0,
+            column: 1,
             length: 0,
-            line: 0,
+            line: 1,
             start: 0,
             tokens: Vec::new(),
-            keywords: Self::create_keywords(),
+            keywords: create_keywords(),
             is_line_indent: true,
         }
     }
 
     pub fn reset_internal_state(&mut self, source: String) {
         self.source = source;
-        self.column = 0;
+        self.column = 1;
         self.length = 0;
         self.start = 0;
-        self.line = 0;
+        self.line = 1;
         self.tokens = Vec::new();
-        self.keywords = Self::create_keywords();
-
-        self.keywords
-            .insert(String::from("def"), TokenKind::Keyword(Keyword::Def));
+        self.keywords = create_keywords();
     }
 
     pub fn scan_tokens(&mut self) -> &Vec<Token> {
@@ -163,14 +199,6 @@ impl Lexer {
         self.length = 0;
     }
 
-    fn create_keywords() -> HashMap<String, TokenKind> {
-        let mut keywords = HashMap::new();
-        keywords.insert("def".to_string(), TokenKind::Keyword(Keyword::Def));
-        keywords.insert("return".to_string(), TokenKind::Keyword(Keyword::Return));
-
-        keywords
-    }
-
     fn scan_token(&mut self) {
         self.sync_cursors();
 
@@ -182,7 +210,7 @@ impl Lexer {
         match c {
             '\n' => {
                 self.make_token(TokenKind::NewLine);
-                self.column = 0;
+                self.column = 1;
                 self.line += 1;
                 self.is_line_indent = true;
             }
@@ -192,54 +220,62 @@ impl Lexer {
                 }
             }
             '\r' => {}
-            '#' => self.make_token(TokenKind::Punctuation(Punctuation::Hash)),
-            '[' => self.make_token(TokenKind::Punctuation(Punctuation::LeftBracket)),
-            ']' => self.make_token(TokenKind::Punctuation(Punctuation::RightBracket)),
-            '(' => self.make_token(TokenKind::Punctuation(Punctuation::LeftParen)),
-            ')' => self.make_token(TokenKind::Punctuation(Punctuation::RightParen)),
-            '{' => self.make_token(TokenKind::Punctuation(Punctuation::LeftBrace)),
-            '}' => self.make_token(TokenKind::Punctuation(Punctuation::RightBrace)),
-            '+' => self.make_token(TokenKind::Operator(Operator::Plus)),
-            '-' => self.make_token(TokenKind::Operator(Operator::Minus)),
+            '#' => self.make_token(TokenKind::Punctuation(PunctuationKind::Hash)),
+            '[' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftBracket)),
+            ']' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightBracket)),
+            '(' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftParen)),
+            ')' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightParen)),
+            '{' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftBrace)),
+            '}' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightBrace)),
+            '+' => self.make_token(TokenKind::Operator(OperatorKind::Plus)),
+            '-' => self.make_token(TokenKind::Operator(OperatorKind::Minus)),
             '*' => {
-                if self.eat('*') {
-                    if self.eat('=') {
-                        self.make_token(TokenKind::Operator(Operator::DoubleStarEqual));
+                if self.try_eat('*') {
+                    if self.try_eat('=') {
+                        self.make_token(TokenKind::Operator(OperatorKind::DoubleStarEqual));
                     } else {
-                        self.make_token(TokenKind::Operator(Operator::DoubleStar));
+                        self.make_token(TokenKind::Operator(OperatorKind::DoubleStar));
                     }
                 } else {
-                    self.make_token(TokenKind::Operator(Operator::Star));
+                    self.make_token(TokenKind::Operator(OperatorKind::Star));
                 }
             }
-            '/' => self.make_token(TokenKind::Punctuation(Punctuation::Slash)),
-            ',' => self.make_token(TokenKind::Punctuation(Punctuation::Comma)),
-            ':' => self.make_token(TokenKind::Punctuation(Punctuation::Colon)),
+            '/' => self.make_token(TokenKind::Punctuation(PunctuationKind::Slash)),
+            ',' => self.make_token(TokenKind::Punctuation(PunctuationKind::Comma)),
+            ':' => self.make_token(TokenKind::Punctuation(PunctuationKind::Colon)),
             '>' => {
-                if self.eat('=') {
-                    self.make_token(TokenKind::Operator(Operator::GreaterEqual));
+                if self.try_eat('=') {
+                    self.make_token(TokenKind::Operator(OperatorKind::GreaterEqual));
                 } else {
-                    self.make_token(TokenKind::Operator(Operator::Greater));
+                    self.make_token(TokenKind::Operator(OperatorKind::Greater));
                 }
             }
             '<' => {
-                if self.eat('=') {
-                    self.make_token(TokenKind::Operator(Operator::LessEqual));
+                if self.try_eat('=') {
+                    self.make_token(TokenKind::Operator(OperatorKind::LessEqual));
                 } else {
-                    self.make_token(TokenKind::Operator(Operator::Less));
+                    self.make_token(TokenKind::Operator(OperatorKind::Less));
                 }
             }
             '=' => {
-                if self.eat('=') {
-                    self.make_token(TokenKind::Operator(Operator::EqualEqual));
+                if self.try_eat('=') {
+                    self.make_token(TokenKind::Operator(OperatorKind::EqualEqual));
                 } else {
-                    self.make_token(TokenKind::Operator(Operator::Equal));
+                    self.make_token(TokenKind::Operator(OperatorKind::Equal));
                 }
             }
             '"' => self.string('"').expect("Error in string."),
             '\'' => self.string('\'').expect("Error in string."),
+            '.' => self.make_token(TokenKind::Dot),
 
             _ => match c {
+                '_' => {
+                    if self.is_alpha_numeric(self.peek_next()) {
+                        self.identifier().expect("Error in identifier.");
+                    } else {
+                        self.make_token(TokenKind::Underscore);
+                    }
+                }
                 _ if self.is_digit(c) => self.number(),
                 _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
                 _ => {
@@ -252,7 +288,7 @@ impl Lexer {
 
     fn identifier(&mut self) -> Result<(), String> {
         loop {
-            if !self.is_alpha_numeric(self.peek()) {
+            if !self.is_alpha_numeric(self.peek()) || self.peek() == '_' {
                 break;
             }
             self.advance();
@@ -374,7 +410,7 @@ impl Lexer {
         c
     }
 
-    fn eat(&mut self, c: char) -> bool {
+    fn try_eat(&mut self, c: char) -> bool {
         if self.is_at_end() {
             return false;
         }

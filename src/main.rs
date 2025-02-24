@@ -1,6 +1,9 @@
 use gppvm::compiler::Compiler;
-use std::fs;
-use std::io::{self, Read};
+use std::{env, fs};
+use std::{
+    error::Error,
+    io::{self, Read},
+};
 
 fn read_file_without_bom(path: &str) -> io::Result<String> {
     let mut file = fs::File::open(path)?;
@@ -16,7 +19,8 @@ fn read_file_without_bom(path: &str) -> io::Result<String> {
     Ok(content)
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
+    env::set_var("RUST_BACKTRACE", "1");
     let source = match read_file_without_bom("res/test.gpp") {
         Ok(s) => {
             println!("{}", s);
@@ -24,11 +28,12 @@ fn main() {
         }
         Err(msg) => {
             println!("{}", msg);
-            return;
+            return Ok(());
         }
     };
 
     let mut compiler = Compiler::new();
 
     compiler.compile(source);
+    Ok(())
 }

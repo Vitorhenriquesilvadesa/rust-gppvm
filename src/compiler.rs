@@ -27,10 +27,10 @@ impl Compiler {
             println!("{:?}", token)
         }
 
-        let expressions = self.parser.parse(tokens.clone());
+        let stmts = self.parser.parse(tokens.clone());
 
-        for expr in expressions {
-            println!("{:?}", expr);
+        for stmt in stmts {
+            println!("{}", stmt);
         }
     }
 }

@@ -1,2 +1,1 @@
-def test():
-    return 2.0
+2.0 3 "Hello"

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum TokenKind {
     Operator(Operator),
@@ -13,7 +13,7 @@ pub enum TokenKind {
     Indentation,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Operator {
     Plus,
@@ -33,7 +33,7 @@ pub enum Operator {
     Equal,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Keyword {
     If,
@@ -50,7 +50,7 @@ pub enum Keyword {
     Finally,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Punctuation {
     Comma,
@@ -67,7 +67,7 @@ pub enum Punctuation {
     Slash,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Literal {
     String,
@@ -75,7 +75,7 @@ pub enum Literal {
     Boolean,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Token {
     pub kind: TokenKind,

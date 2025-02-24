@@ -1,6 +1,8 @@
 mod lexer;
 mod parser;
 
+use lexer::Token;
+
 use self::{lexer::Lexer, parser::Parser};
 
 pub struct Compiler {
@@ -23,6 +25,12 @@ impl Compiler {
 
         for token in tokens {
             println!("{:?}", token)
+        }
+
+        let expressions = self.parser.parse(tokens.clone());
+
+        for expr in expressions {
+            println!("{:?}", expr);
         }
     }
 }

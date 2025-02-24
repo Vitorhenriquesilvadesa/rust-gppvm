@@ -1,15 +1,18 @@
 mod lexer;
+mod parser;
 
-use lexer::Lexer;
+use self::{lexer::Lexer, parser::Parser};
 
 pub struct Compiler {
     lexer: lexer::Lexer,
+    parser: parser::Parser,
 }
 
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
             lexer: Lexer::without_source(),
+            parser: Parser::new(),
         }
     }
 

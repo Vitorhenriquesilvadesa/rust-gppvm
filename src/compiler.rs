@@ -1,3 +1,4 @@
+mod instructions;
 mod lexer;
 mod parser;
 

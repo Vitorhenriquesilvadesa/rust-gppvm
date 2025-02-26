@@ -1,8 +1,7 @@
 mod instructions;
 mod lexer;
 mod parser;
-
-use lexer::Token;
+mod semantics;
 
 use self::{lexer::Lexer, parser::Parser};
 
@@ -23,11 +22,6 @@ impl Compiler {
         self.lexer.reset_internal_state(source);
 
         let tokens = self.lexer.scan_tokens();
-
         let stmts = self.parser.parse(tokens.clone());
-
-        for stmt in stmts {
-            println!("{:?}", stmt);
-        }
     }
 }

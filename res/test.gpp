@@ -7,3 +7,9 @@ def some_function(myList: List)  {
         print(x);
     }
 }
+
+type Point {
+    x: float,
+    y: float,
+    z: float,
+}

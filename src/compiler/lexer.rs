@@ -58,6 +58,7 @@ pub enum KeywordKind {
     Or,
     And,
     Let,
+    In,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -131,6 +132,10 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     );
     keywords.insert("let".to_string(), TokenKind::Keyword(KeywordKind::Let));
     keywords.insert("type".to_string(), TokenKind::Keyword(KeywordKind::Type));
+    keywords.insert(
+        "import".to_string(),
+        TokenKind::Keyword(KeywordKind::Import),
+    );
     keywords.insert("not".to_string(), TokenKind::Operator(OperatorKind::Not));
     keywords.insert("and".to_string(), TokenKind::Operator(OperatorKind::And));
     keywords.insert("or".to_string(), TokenKind::Operator(OperatorKind::Or));
@@ -139,6 +144,8 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert("elif".to_string(), TokenKind::Keyword(KeywordKind::Elif));
     keywords.insert("def".to_string(), TokenKind::Keyword(KeywordKind::Def));
     keywords.insert("while".to_string(), TokenKind::Keyword(KeywordKind::While));
+    keywords.insert("for".to_string(), TokenKind::Keyword(KeywordKind::For));
+    keywords.insert("in".to_string(), TokenKind::Keyword(KeywordKind::In));
     keywords.insert(
         "return".to_string(),
         TokenKind::Keyword(KeywordKind::Return),

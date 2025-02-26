@@ -1,8 +1,9 @@
-use core::panic;
 use std::{
     collections::HashMap,
     fmt::{self, Display},
 };
+
+use crate::gpp_error;
 
 use super::lexer::{
     create_keywords, KeywordKind, Literal, OperatorKind, PunctuationKind, Token, TokenKind,
@@ -15,7 +16,7 @@ pub struct Parser {
     keywords: HashMap<String, TokenKind>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(Token),
     Unary(Token, Box<Expression>),
@@ -35,7 +36,7 @@ pub enum Expression {
     Group(Box<Expression>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     // region:  --- Statements
     If(Expression, Box<Statement>, Option<Box<Statement>>),
@@ -48,15 +49,18 @@ pub enum Statement {
     // endregion:  --- Statements
 
     // region:  --- Declarations
-    Decorator(Vec<Expression>),
+    Decorator(Token, Vec<Expression>),
     Type(Token, Vec<FieldDeclaration>),
     Function(Token, Vec<FieldDeclaration>, Box<Statement>),
     Global,
     Variable(Token, Option<Expression>),
     // endregion:  --- Statements
+
+    // region:  --- For Compiler
+    EndCode, // endregion:  --- For Compiler
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldDeclaration {
     name: Token,
     kind: Expression,
@@ -127,6 +131,8 @@ impl Parser {
             self.statements.push(stmt);
         }
 
+        self.statements.push(Statement::EndCode);
+
         &self.statements
     }
 
@@ -155,6 +161,8 @@ impl Parser {
     }
 
     fn decorator_declaration(&mut self) -> Statement {
+        let hash_token = self.previous();
+
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBracket),
             String::from("Expect '[' after '#'."),
@@ -175,7 +183,7 @@ impl Parser {
             String::from("Expect ']' after attributues."),
         );
 
-        Statement::Decorator(decorators)
+        Statement::Decorator(hash_token, decorators)
     }
 
     fn parse_decorator(&mut self) -> Expression {
@@ -344,9 +352,8 @@ impl Parser {
                 KeywordKind::For => self.for_statement(),
                 KeywordKind::Let => self.variable_declaration(),
                 KeywordKind::Import => self.import_statement(),
-
                 _ => {
-                    panic!("Invalid keyword '{}'.", self.peek().lexeme);
+                    gpp_error!("Invalid keyword '{}'.", self.peek().lexeme);
                 }
             },
             _ => {
@@ -474,7 +481,7 @@ impl Parser {
         let mut statements = Vec::<Box<Statement>>::new();
 
         while !self.try_eat(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
-            statements.push(Box::new(self.statement()));
+            statements.push(Box::new(self.declaration()));
         }
 
         Statement::Scope(statements)
@@ -501,7 +508,7 @@ impl Parser {
                 }
 
                 _ => {
-                    panic!("Invalid assignment target at line {}.", equals);
+                    gpp_error!("Invalid assignment target at line {}.", equals);
                 }
             }
         }
@@ -659,7 +666,7 @@ impl Parser {
 
             while has_args {
                 if arguments.iter().count() >= 255 {
-                    panic!(
+                    gpp_error!(
                         "Can't have more than 255 arguments. At line {}.",
                         self.peek().line
                     );
@@ -711,11 +718,11 @@ impl Parser {
                     CollectionKind::List,
                 ),
                 _ => {
-                    panic!("Invalid punctuation {:?}.", self.previous());
+                    gpp_error!("Invalid punctuation {:?}.", self.previous());
                 }
             },
             _ => {
-                panic!("Invalid expression {:?}.", self.peek());
+                gpp_error!("Invalid expression {:?}.", self.peek());
             }
         }
     }
@@ -770,7 +777,7 @@ impl Parser {
         match self.try_eat(&[kind]) {
             true => self.previous(),
             false => {
-                panic!("{}", msg);
+                gpp_error!("{}", msg);
             }
         }
     }

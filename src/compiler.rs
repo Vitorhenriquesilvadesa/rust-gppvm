@@ -1,13 +1,17 @@
+mod errors;
 mod instructions;
 mod lexer;
 mod parser;
 mod semantics;
+
+use semantics::SemanticAnalyzer;
 
 use self::{lexer::Lexer, parser::Parser};
 
 pub struct Compiler {
     lexer: lexer::Lexer,
     parser: parser::Parser,
+    semantic_analyzer: semantics::SemanticAnalyzer,
 }
 
 impl Compiler {
@@ -15,6 +19,7 @@ impl Compiler {
         Compiler {
             lexer: Lexer::without_source(),
             parser: Parser::new(),
+            semantic_analyzer: SemanticAnalyzer::new(),
         }
     }
 
@@ -23,5 +28,6 @@ impl Compiler {
 
         let tokens = self.lexer.scan_tokens();
         let stmts = self.parser.parse(tokens.clone());
+        let intermediate_repr = self.semantic_analyzer.analyze(stmts.clone());
     }
 }

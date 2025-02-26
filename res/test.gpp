@@ -1,7 +1,16 @@
-x
-    y
-        z
-   s
-s
-s
- a
+while x {
+    let x;
+
+    x = [1, 2, 3];
+}
+
+type Vec3 {
+    x: float,
+    y: float,
+    z: float,
+}
+
+
+def some_function(x: int, y: int)  {
+
+}

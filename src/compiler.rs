@@ -30,7 +30,7 @@ impl Compiler {
         let stmts = self.parser.parse(tokens.clone());
 
         for stmt in stmts {
-            println!("{}", stmt);
+            println!("{:?}", stmt);
         }
     }
 }

@@ -1,7 +1,9 @@
 use core::panic;
 use std::{
+    arch::x86_64::_SIDD_SWORD_OPS,
     collections::HashMap,
     fmt::{self, Display},
+    thread::current,
 };
 
 use super::lexer::{
@@ -30,26 +32,40 @@ pub enum Expression {
     Variable(Token),
     Set(Box<Expression>, Token, Box<Expression>),
     Call(Box<Expression>, Token, Vec<Expression>),
+    Tuple(Vec<Box<Expression>>),
+    List(Vec<Box<Expression>>),
+    Type(Vec<Token>),
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     // region:  --- Statements
     If(Expression, Box<Statement>, Option<Box<Statement>>),
-    While,
-    ForEach,
+    While(Expression, Box<Statement>),
+    ForEach(Expression, Expression),
     Expression(Expression),
     Match,
-    Scope(Option<Box<Statement>>, Vec<Box<Statement>>),
+    Scope(Vec<Box<Statement>>),
     // endregion:  --- Statements
 
     // region:  --- Declarations
     Decorator,
-    Type,
-    Function,
+    Type(Token, Vec<FieldDeclaration>),
+    Function(Token, Vec<FieldDeclaration>, Box<Statement>),
     Global,
-    Variable,
+    Variable(Token, Option<Expression>),
     // endregion:  --- Statements
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldDeclaration {
+    name: Token,
+    kind: Expression,
+}
+
+pub enum CollectionKind {
+    Tuple,
+    List,
 }
 
 impl Display for Statement {
@@ -79,7 +95,16 @@ impl Display for Expression {
             }
             Expression::Variable(name) => write!(f, "Variable({})", name),
             Expression::Call(callee, _, args) => write!(f, "Call({:?}, {:?})", callee, args),
+            Expression::Tuple(values) => write!(f, "Tuple({:?})", values),
+            Expression::List(values) => write!(f, "List({:?})", values),
+            Expression::Type(types) => write!(f, "List({:?})", types),
         }
+    }
+}
+
+impl FieldDeclaration {
+    pub fn new(name: Token, kind: Expression) -> Self {
+        FieldDeclaration { name, kind }
     }
 }
 
@@ -91,7 +116,7 @@ impl Parser {
             statements: Vec::new(),
             keywords: create_keywords(),
             indentations: vec![0u32],
-            scopes: vec![Statement::Scope(None, vec![])],
+            scopes: vec![Statement::Scope(vec![])],
         }
     }
 
@@ -99,58 +124,261 @@ impl Parser {
         self.reset_internal_state(tokens);
 
         while !self.is_at_end() {
-            let expr = self.statement();
-            self.statements.push(expr);
+            let stmt = self.declaration();
+            self.statements.push(stmt);
         }
 
         &self.statements
     }
 
-    fn statement(&mut self) -> Statement {
-        while self.try_eat(&[TokenKind::NewLine]) {
-            self.process_indentation();
+    fn declaration(&mut self) -> Statement {
+        match self.advance().kind {
+            TokenKind::Keyword(keyword) => match keyword {
+                KeywordKind::Type => self.type_declaration(),
+                KeywordKind::Def => self.function_declaration(),
+                _ => {
+                    self.backtrack();
+                    self.statement()
+                }
+            },
+            _ => {
+                self.backtrack();
+                self.statement()
+            }
         }
+    }
 
-        println!(
-            "Current indent: {}",
-            self.indentations
-                .get(self.indentations.iter().count() - 1)
-                .unwrap()
+    fn function_declaration(&mut self) -> Statement {
+        let function_name = self.eat(
+            TokenKind::Identifier,
+            String::from("Expect function name after 'def'."),
         );
 
-        match self.peek().kind {
-            _ => self.expression_statement(),
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftParen),
+            String::from(format!(
+                "Expect '(' after function name, but got {}.",
+                self.peek().lexeme
+            )),
+        );
+
+        let mut params: Vec<FieldDeclaration> = Vec::new();
+
+        if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightParen)]) {
+            let param_name = self.eat(TokenKind::Identifier, String::from("Expect param name."));
+
+            self.eat(
+                TokenKind::Punctuation(PunctuationKind::Colon),
+                String::from("Expect ':' after param name."),
+            );
+
+            let param_type =
+                vec![self.eat(TokenKind::Identifier, String::from("Expect param type."))];
+
+            params.push(FieldDeclaration::new(
+                param_name,
+                Expression::Type(param_type),
+            ));
+
+            while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
+                let param_name =
+                    self.eat(TokenKind::Identifier, String::from("Expect param name."));
+
+                self.eat(
+                    TokenKind::Punctuation(PunctuationKind::Colon),
+                    String::from("Expect ':' after param name."),
+                );
+
+                let param_type =
+                    vec![self.eat(TokenKind::Identifier, String::from("Expect param type."))];
+
+                params.push(FieldDeclaration::new(
+                    param_name,
+                    Expression::Type(param_type),
+                ));
+            }
         }
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::RightParen),
+            String::from("Expect ')' after function params."),
+        );
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftBrace),
+            String::from(format!(
+                "Expect '{{' before function body, but got {}.",
+                self.peek().lexeme
+            )),
+        );
+
+        let body = self.parse_scope();
+
+        Statement::Function(function_name, params, Box::new(body))
+    }
+
+    fn type_declaration(&mut self) -> Statement {
+        let type_name = self.eat(
+            TokenKind::Identifier,
+            String::from("Expect type name after 'type' keyword."),
+        );
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftBrace),
+            String::from("Expect '{' after type name."),
+        );
+
+        let mut fields: Vec<FieldDeclaration> = Vec::new();
+
+        if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
+            let mut field_name = self.eat(
+                TokenKind::Identifier,
+                String::from(format!(
+                    "Expect field name, but got '{}'.",
+                    self.peek().lexeme
+                )),
+            );
+
+            self.eat(
+                TokenKind::Punctuation(PunctuationKind::Colon),
+                String::from("Expect ':' after field name."),
+            );
+
+            let mut field_type: Expression = Expression::Type(vec![self.advance()]);
+            fields.push(FieldDeclaration::new(field_name, field_type));
+
+            while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
+                if self.check(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
+                    break;
+                }
+
+                field_name = self.eat(
+                    TokenKind::Identifier,
+                    String::from(format!(
+                        "Expect field name, but got {}.",
+                        self.peek().lexeme
+                    )),
+                );
+
+                self.eat(
+                    TokenKind::Punctuation(PunctuationKind::Colon),
+                    String::from("Expect ':' after field name."),
+                );
+
+                field_type = Expression::Type(vec![self.advance()]);
+                fields.push(FieldDeclaration::new(field_name, field_type));
+            }
+        }
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::RightBrace),
+            String::from("Expect '}' after type fields."),
+        );
+
+        Statement::Type(type_name, fields)
+    }
+
+    fn statement(&mut self) -> Statement {
+        match self.advance().kind {
+            TokenKind::Keyword(keyword) => match keyword {
+                KeywordKind::If => self.if_statement(),
+                KeywordKind::While => self.while_statement(),
+                KeywordKind::Let => self.variable_declaration(),
+
+                _ => {
+                    panic!("Invalid keyword '{}'.", self.peek().lexeme);
+                }
+            },
+            _ => {
+                self.backtrack();
+                self.expression_statement()
+            }
+        }
+    }
+
+    fn variable_declaration(&mut self) -> Statement {
+        let name = self.eat(
+            TokenKind::Identifier,
+            String::from("Expect identifier after 'let'."),
+        );
+
+        let mut value: Option<Expression> = None;
+
+        if !self.check(&[TokenKind::Punctuation(PunctuationKind::SemiColon)]) {
+            value = Some(self.expression());
+        }
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::SemiColon),
+            String::from("Expect ';' after variable declaration."),
+        );
+
+        Statement::Variable(name, value)
+    }
+
+    fn while_statement(&mut self) -> Statement {
+        let condition = self.expression();
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftBrace),
+            String::from("Expect '{' after 'while' condition."),
+        );
+
+        let body = self.parse_scope();
+
+        Statement::While(condition, Box::new(body))
+    }
+
+    fn if_statement(&mut self) -> Statement {
+        let condition = self.expression();
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftBrace),
+            format!(
+                "Expect '{{' after 'if' condition, but got {:?}. At line {}.",
+                self.peek(),
+                self.peek().line
+            ),
+        );
+
+        let then_branch = self.parse_scope();
+
+        let mut else_branch: Option<Box<Statement>> = None;
+
+        if self.try_eat(&[TokenKind::Keyword(KeywordKind::Else)]) {
+            self.eat(
+                TokenKind::Punctuation(PunctuationKind::LeftBrace),
+                String::from(format!(
+                    "Expect '{{' after 'else' keyword, but got {:?}",
+                    self.peek()
+                )),
+            );
+
+            else_branch = Some(Box::new(self.parse_scope()));
+        }
+
+        Statement::If(condition, Box::new(then_branch), else_branch)
     }
 
     fn expression_statement(&mut self) -> Statement {
         let expr = self.expression();
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::SemiColon),
+            String::from(format!(
+                "Expect ';' after expression. At line {}.",
+                self.peek().line
+            )),
+        );
         Statement::Expression(expr)
     }
 
-    // fn if_statement(&mut self) -> Statement {
-    //     let condition = self.expression();
-    //     self.eat(
-    //         TokenKind::Punctuation(PunctuationKind::Colon),
-    //         format!(
-    //             "Expect ':' after 'if' condition. At line {}.",
-    //             self.peek().line
-    //         ),
-    //     );
+    fn parse_scope(&mut self) -> Statement {
+        let mut statements = Vec::<Box<Statement>>::new();
 
-    //     self.eat(
-    //         TokenKind::NewLine,
-    //         format!("Expect new line after ':'. At line {}.", self.peek().line),
-    //     );
+        while !self.try_eat(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
+            statements.push(Box::new(self.statement()));
+        }
 
-    //     let old_depth = self.scopes.iter().count();
-    //     self.process_indentation();
-    //     let new_depth = self.scopes.iter().count();
-
-    //     if new_depth <= old_depth {
-    //         panic!("Indentation error at line {}", self.peek().line);
-    //     }
-    // }
+        Statement::Scope(statements)
+    }
 
     fn expression(&mut self) -> Expression {
         self.assignment()
@@ -173,7 +401,6 @@ impl Parser {
                 }
 
                 _ => {
-                    println!("\nChegou aqui com {}\n", expr);
                     panic!("Invalid assignment target at line {}.", equals);
                 }
             }
@@ -367,7 +594,48 @@ impl Parser {
             return Expression::Variable(self.previous());
         }
 
-        panic!("Invalid expression {:?}.", self.peek());
+        match self.advance().kind {
+            TokenKind::Punctuation(punctuation) => match punctuation {
+                PunctuationKind::LeftBracket => self.collection_expression(
+                    PunctuationKind::RightBracket,
+                    "Expect ']' after list values.",
+                    CollectionKind::List,
+                ),
+                PunctuationKind::LeftParen => self.collection_expression(
+                    PunctuationKind::RightParen,
+                    "Expect ')' after tuple values.",
+                    CollectionKind::List,
+                ),
+                _ => {
+                    panic!("Invalid punctuation {:?}.", self.peek());
+                }
+            },
+            _ => {
+                panic!("Invalid expression {:?}.", self.peek());
+            }
+        }
+    }
+
+    fn collection_expression(
+        &mut self,
+        closing: PunctuationKind,
+        error_msg: &str,
+        kind: CollectionKind,
+    ) -> Expression {
+        let mut values: Vec<Box<Expression>> = Vec::new();
+
+        values.push(Box::new(self.expression()));
+
+        while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
+            values.push(Box::new(self.expression()));
+        }
+
+        self.eat(TokenKind::Punctuation(closing), error_msg.to_string());
+
+        match kind {
+            CollectionKind::List => Expression::List(values),
+            CollectionKind::Tuple => Expression::Tuple(values),
+        }
     }
 
     fn is_at_end(&self) -> bool {
@@ -414,45 +682,14 @@ impl Parser {
 
     fn advance(&mut self) -> Token {
         self.current += 1;
-        self.tokens[self.current].clone()
+        self.previous()
     }
 
     fn peek(&self) -> Token {
         self.tokens[self.current].clone()
     }
 
-    fn process_indentation(&mut self) {
-        let mut count = 0u32;
-        let mut token = self.peek();
-
-        while token.kind == TokenKind::Indentation {
-            count += 1;
-            token = self.advance();
-        }
-
-        let current_level = self.indentations.last().copied().unwrap_or(0);
-
-        if count > current_level {
-            self.indentations.push(count);
-        } else {
-            while let Some(&last) = self.indentations.last() {
-                if last == count {
-                    break;
-                }
-                self.indentations.pop();
-            }
-
-            if self.indentations.is_empty() || self.indentations.last().copied().unwrap() != count {
-                panic!("Indentation error.");
-            }
-        }
-    }
-
-    fn is_keyword(&self, lexeme: &String) -> bool {
-        if let Some(_) = self.keywords.get(lexeme).copied() {
-            return true;
-        }
-
-        false
+    fn backtrack(&mut self) {
+        self.current -= 1;
     }
 }

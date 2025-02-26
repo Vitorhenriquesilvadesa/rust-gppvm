@@ -13,8 +13,6 @@ pub enum TokenKind {
     Literal(Literal),
     Identifier,
     EndOfFile,
-    NewLine,
-    Indentation,
     Underscore,
     Dot,
 }
@@ -59,6 +57,7 @@ pub enum KeywordKind {
     Type,
     Or,
     And,
+    Let,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -121,7 +120,6 @@ pub struct Lexer {
     length: usize,
     tokens: Vec<Token>,
     keywords: HashMap<String, TokenKind>,
-    is_line_indent: bool,
 }
 
 pub fn create_keywords() -> HashMap<String, TokenKind> {
@@ -131,6 +129,7 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
         "global".to_string(),
         TokenKind::Keyword(KeywordKind::Global),
     );
+    keywords.insert("let".to_string(), TokenKind::Keyword(KeywordKind::Let));
     keywords.insert("type".to_string(), TokenKind::Keyword(KeywordKind::Type));
     keywords.insert("not".to_string(), TokenKind::Operator(OperatorKind::Not));
     keywords.insert("and".to_string(), TokenKind::Operator(OperatorKind::And));
@@ -138,6 +137,8 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert("if".to_string(), TokenKind::Keyword(KeywordKind::If));
     keywords.insert("else".to_string(), TokenKind::Keyword(KeywordKind::Else));
     keywords.insert("elif".to_string(), TokenKind::Keyword(KeywordKind::Elif));
+    keywords.insert("def".to_string(), TokenKind::Keyword(KeywordKind::Def));
+    keywords.insert("while".to_string(), TokenKind::Keyword(KeywordKind::While));
     keywords.insert(
         "return".to_string(),
         TokenKind::Keyword(KeywordKind::Return),
@@ -157,7 +158,6 @@ impl Lexer {
             length: 0,
             tokens: Vec::new(),
             keywords: HashMap::new(),
-            is_line_indent: true,
         }
     }
 
@@ -170,7 +170,6 @@ impl Lexer {
             start: 0,
             tokens: Vec::new(),
             keywords: create_keywords(),
-            is_line_indent: true,
         }
     }
 
@@ -209,16 +208,10 @@ impl Lexer {
 
         match c {
             '\n' => {
-                self.make_token(TokenKind::NewLine);
                 self.column = 1;
                 self.line += 1;
-                self.is_line_indent = true;
             }
-            ' ' | '\t' => {
-                if self.is_line_indent {
-                    self.make_token(TokenKind::Indentation);
-                }
-            }
+            ' ' | '\t' => {}
             '\r' => {}
             '#' => self.make_token(TokenKind::Punctuation(PunctuationKind::Hash)),
             '[' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftBracket)),
@@ -243,6 +236,7 @@ impl Lexer {
             '/' => self.make_token(TokenKind::Punctuation(PunctuationKind::Slash)),
             ',' => self.make_token(TokenKind::Punctuation(PunctuationKind::Comma)),
             ':' => self.make_token(TokenKind::Punctuation(PunctuationKind::Colon)),
+            ';' => self.make_token(TokenKind::Punctuation(PunctuationKind::SemiColon)),
             '>' => {
                 if self.try_eat('=') {
                     self.make_token(TokenKind::Operator(OperatorKind::GreaterEqual));
@@ -288,7 +282,7 @@ impl Lexer {
 
     fn identifier(&mut self) -> Result<(), String> {
         loop {
-            if !self.is_alpha_numeric(self.peek()) || self.peek() == '_' {
+            if !(self.is_alpha_numeric(self.peek()) || self.peek() == '_') {
                 break;
             }
             self.advance();
@@ -390,12 +384,7 @@ impl Lexer {
     }
 
     fn make_token_with_lexeme(&mut self, kind: TokenKind, lexeme: String) {
-        if !matches!(lexeme.as_str(), " " | "\t") {
-            self.is_line_indent = false;
-        }
-
         let token = Token::new(kind, lexeme, self.line, self.column);
-
         self.tokens.push(token);
     }
 

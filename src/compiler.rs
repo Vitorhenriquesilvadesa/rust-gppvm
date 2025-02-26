@@ -23,10 +23,6 @@ impl Compiler {
 
         let tokens = self.lexer.scan_tokens();
 
-        for token in tokens {
-            println!("{:?}", token)
-        }
-
         let stmts = self.parser.parse(tokens.clone());
 
         for stmt in stmts {

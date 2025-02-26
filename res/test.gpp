@@ -1,7 +1,8 @@
-import stdlib;
-
 #[num_threads(8, 8, 8), pragma("sync")]
 def some_function(myList: List)  {
+
+    let output = [];
+
     for i in myList {
         print(x);
     }

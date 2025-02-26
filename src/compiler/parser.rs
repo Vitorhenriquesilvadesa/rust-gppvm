@@ -1,9 +1,7 @@
 use core::panic;
 use std::{
-    arch::x86_64::_SIDD_SWORD_OPS,
     collections::HashMap,
     fmt::{self, Display},
-    thread::current,
 };
 
 use super::lexer::{
@@ -15,8 +13,6 @@ pub struct Parser {
     statements: Vec<Statement>,
     current: usize,
     keywords: HashMap<String, TokenKind>,
-    indentations: Vec<u32>,
-    scopes: Vec<Statement>,
 }
 
 #[derive(Debug, Clone)]
@@ -120,8 +116,6 @@ impl Parser {
             tokens: Vec::new(),
             statements: Vec::new(),
             keywords: create_keywords(),
-            indentations: vec![0u32],
-            scopes: vec![Statement::Scope(vec![])],
         }
     }
 
@@ -407,13 +401,16 @@ impl Parser {
 
         let mut value: Option<Expression> = None;
 
-        if !self.check(&[TokenKind::Punctuation(PunctuationKind::SemiColon)]) {
+        if self.try_eat(&[TokenKind::Operator(OperatorKind::Equal)]) {
             value = Some(self.expression());
         }
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
-            String::from("Expect ';' after variable declaration."),
+            String::from(format!(
+                "Expect ';' after variable declaration, but got '{}'.",
+                self.peek().lexeme
+            )),
         );
 
         Statement::Variable(name, value)

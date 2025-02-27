@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     error::Error,
     fmt::{self, Display},
+    ops::Add,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

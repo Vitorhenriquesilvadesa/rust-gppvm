@@ -1,5 +1,5 @@
 use crate::gpp_error;
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use super::{
     lexer::Token,
@@ -105,6 +105,14 @@ impl ContextStack {
         Self { scopes: Vec::new() }
     }
 
+    pub fn push_empty(&mut self) {
+        self.scopes.push(ContextScope::new());
+    }
+
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
     pub fn len(&self) -> usize {
         self.scopes.len()
     }
@@ -148,9 +156,12 @@ impl SemanticAnalyzer {
     pub fn analyze(&mut self, statements: Vec<Statement>) -> IntermediateCode {
         self.reset_internal_state(statements);
 
+        let mut stmt: Statement;
+
         while !self.is_at_end() {
-            let stmt = self.current().unwrap().clone();
+            stmt = self.current().unwrap().clone();
             self.analyze_stmt(stmt);
+            self.advance();
         }
 
         IntermediateCode::new()
@@ -162,15 +173,18 @@ impl SemanticAnalyzer {
             Statement::Decorator(hash_token, attribs) => {
                 self.analyze_decorator(hash_token, attribs.clone())
             }
+            Statement::Type(name, fields) => self.analyze_type(name, fields),
             Statement::Function(name, params, body) => self.analyze_function(name, params, *body),
+            Statement::Variable(name, value) => self.analyze_variable_declaration(name, value),
+            Statement::ForEach(variable, condition, body) => {
+                self.analyze_iterator(variable, condition, *body)
+            }
             _ => gpp_error!("Statement {:?} not supported.", stmt),
         }
     }
 
-    fn analyze_function(&mut self, name: Token, params: Vec<FieldDeclaration>, body: Statement) {
-        if self.depth() != 0 {
-            gpp_error!("Functions are only allowed in top level code.");
-        }
+    fn analyze_iterator(&mut self, variable: Token, condition: Expression, body: Statement) {
+        self.begin_scope();
 
         match body {
             Statement::Scope(stmts) => {
@@ -180,10 +194,67 @@ impl SemanticAnalyzer {
             }
             _ => gpp_error!("Statement {:?} is not allowed here.", body),
         }
+
+        self.end_scope();
+    }
+
+    fn analyze_variable_declaration(&mut self, name: Token, value: Option<Expression>) {}
+
+    fn analyze_type(&mut self, name: Token, fields: Vec<FieldDeclaration>) {
+        self.require_depth(
+            Ordering::Less,
+            1,
+            format!(
+                "Type declarations are only allowed in top level code. At line {}.",
+                name.line
+            ),
+        );
+    }
+
+    fn analyze_function(&mut self, name: Token, params: Vec<FieldDeclaration>, body: Statement) {
+        self.require_depth(
+            Ordering::Less,
+            1,
+            format!(
+                "Functions are only allowed in top level code. At line {}.",
+                name.line
+            ),
+        );
+
+        self.begin_scope();
+
+        match body {
+            Statement::Scope(stmts) => {
+                for stmt in stmts {
+                    self.analyze_stmt(*stmt);
+                }
+            }
+            _ => gpp_error!("Statement {:?} is not allowed here.", body),
+        }
+
+        self.end_scope();
+    }
+
+    fn require_depth(&mut self, comparator: Ordering, depth: usize, message: String) {
+        let comparison_result = self.depth().cmp(&depth);
+
+        if comparison_result != comparator {
+            gpp_error!("{}", message);
+        }
+    }
+
+    fn begin_scope(&mut self) {
+        self.context_stack.push_empty();
+    }
+
+    fn end_scope(&mut self) {
+        self.context_stack.pop();
     }
 
     fn analyze_decorator(&mut self, hash_token: Token, attributes: Vec<Expression>) {
-        match self.next() {
+        let next = self.next();
+
+        match next {
             Statement::Function(name, params, body) => {}
             _ => gpp_error!(
                 "Decorators are only accepted in function signatures. At line {}.",
@@ -213,6 +284,15 @@ impl SemanticAnalyzer {
 
     fn current(&self) -> Option<&Statement> {
         self.statements.get(self.current_stmt)
+    }
+
+    fn previous(&self) -> Option<&Statement> {
+        self.statements.get(self.current_stmt - 1)
+    }
+
+    fn advance(&mut self) -> Option<&Statement> {
+        self.current_stmt += 1;
+        self.previous()
     }
 
     fn reset_internal_state(&mut self, statements: Vec<Statement>) {

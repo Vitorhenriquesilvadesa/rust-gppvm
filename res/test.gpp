@@ -1,23 +1,13 @@
-def other_function() {
-    
-}
-
 #[num_threads(8, 8, 8), pragma("sync")]
 def some_function(myList: List)  {
 
-    let output = [];
+    let output;
 
-    for i in myList {
-        print(x);
+    output = true;
 
-        type X {
-            
-        }
+    output = output + true;
+
+    if true {
+
     }
-}
-
-type Point {
-    x: float,
-    y: float,
-    z: float,
 }

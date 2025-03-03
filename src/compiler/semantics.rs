@@ -1,7 +1,7 @@
 #![allow(warnings)]
 
 use crate::gpp_error;
-use std::{ cmp::Ordering, collections::HashMap, string };
+use std::{ cmp::Ordering, collections::{ HashMap, HashSet }, string };
 
 use super::{
     lexer::{ Literal, OperatorKind, PunctuationKind, Token, TokenKind },
@@ -42,15 +42,35 @@ impl Value {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+struct Archetype {
+    name: String,
+}
+
+impl Archetype {
+    fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct TypeDecl {
     name: String,
     kind_id: u32,
+    archetypes: HashSet<Archetype>,
 }
 
 impl TypeDecl {
     fn new(name: String, kind_id: u32) -> Self {
-        Self { name, kind_id }
+        Self { name, kind_id, archetypes: HashSet::new() }
+    }
+
+    fn implements_archetype(&self, arch: &Archetype) -> bool {
+        self.archetypes.contains(arch)
+    }
+
+    fn add_archetype(&mut self, arch: Archetype) {
+        self.archetypes.insert(arch);
     }
 }
 
@@ -192,21 +212,22 @@ impl SemanticAnalyzer {
     }
 
     fn initialize_predefined_types(&mut self) {
-        let floating_point_type_decl = TypeDecl::new("float".to_string(), self.get_static_id());
-        let floating_point_static_value = StaticValue::new(
-            floating_point_type_decl,
-            Value::Internal
-        );
+        self.create_and_define_type("bool", vec![]);
+        self.create_and_define_type("str", vec![]);
+        self.create_and_define_type("float", vec![]);
+        self.create_and_define_type("iterator", vec!["iterator"]);
+        self.create_and_define_type("list", vec!["iterator"]);
+    }
 
-        let str_type_decl = TypeDecl::new("str".to_string(), self.get_static_id());
-        let str_static_value = StaticValue::new(str_type_decl, Value::Internal);
+    fn create_and_define_type(&mut self, name: &str, archetypes: Vec<&str>) {
+        let mut type_decl = TypeDecl::new(name.to_string(), self.get_static_id());
 
-        let bool_type_decl = TypeDecl::new("bool".to_string(), self.get_static_id());
-        let bool_static_value = StaticValue::new(bool_type_decl, Value::Internal);
+        for archetype_name in archetypes {
+            type_decl.add_archetype(Archetype::new(archetype_name.to_string()));
+        }
 
-        self.define_symbol("bool".to_string(), bool_static_value);
-        self.define_symbol("str".to_string(), str_static_value);
-        self.define_symbol("float".to_string(), floating_point_static_value);
+        let static_value = StaticValue::new(type_decl, Value::Internal);
+        self.define_symbol(name.to_string(), static_value);
     }
 
     fn define_symbol(&mut self, name: String, value: StaticValue) {
@@ -246,6 +267,12 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_iterator(&mut self, variable: Token, condition: Expression, body: Statement) {
+        self.assert_archetype_kind(
+            condition,
+            self.get_static_kind("iterator"),
+            format!("Expect iterator. At line {}.", variable.line)
+        );
+
         self.begin_scope();
 
         match body {
@@ -412,7 +439,7 @@ impl SemanticAnalyzer {
             Expression::Set(expression, token, expression1) => todo!(),
             Expression::Call(expression, token, expressions) => todo!(),
             Expression::Tuple(expressions) => todo!(),
-            Expression::List(expressions) => todo!(),
+            Expression::List(expressions) => self.analyze_collection(expressions),
             Expression::Type(tokens) => todo!(),
             Expression::Attribute(token, expressions) => todo!(),
             Expression::Group(expression) => todo!(),
@@ -501,6 +528,7 @@ impl SemanticAnalyzer {
 
     fn resolve_expr_type(&mut self, expression: Expression) -> TypeDecl {
         match expression {
+            Expression::List(elements) => { self.resolve_list_type(elements) }
             Expression::Literal(token) => {
                 match token.kind {
                     TokenKind::Identifier => { self.resolve_identifier_type(token) }
@@ -640,25 +668,23 @@ impl SemanticAnalyzer {
                     let left_kind = self.resolve_expr_type(*left.clone());
                     let right_kind = self.resolve_expr_type(*right.clone());
 
+                    let msg = format!(
+                        "Cannot apply arithmetic operation '{}' to '{}' and '{}'. At line {}.",
+                        token.lexeme,
+                        left_kind.name,
+                        right_kind.name,
+                        token.line
+                    );
+
                     self.is_same_kind(
                         left_kind.clone(),
                         self.get_static_kind("float"),
-                        format!(
-                            "Cannot apply arithmetic operation to '{}' and '{}'. At line {}.",
-                            left_kind.name,
-                            right_kind.name,
-                            token.line
-                        )
+                        msg.clone()
                     );
                     self.is_same_kind(
                         right_kind.clone(),
                         self.get_static_kind("float"),
-                        format!(
-                            "Cannot apply arithmetic operation to '{}' and '{}'. At line {}.",
-                            left_kind.name,
-                            right_kind.name,
-                            token.line
-                        )
+                        msg.clone()
                     );
                 }
                 _ =>
@@ -676,4 +702,26 @@ impl SemanticAnalyzer {
             gpp_error!("{}", msg);
         }
     }
+
+    fn assert_archetype_kind(&mut self, expr: Expression, archetype_source: TypeDecl, msg: String) {
+        let expr_kind = self.resolve_expr_type(expr);
+
+        let mut is_same = true;
+
+        for archtype in archetype_source.archetypes.iter() {
+            if !expr_kind.implements_archetype(archtype) {
+                is_same = false;
+            }
+        }
+
+        if !is_same {
+            gpp_error!("{}", msg);
+        }
+    }
+
+    fn resolve_list_type(&self, elements: Vec<Box<Expression>>) -> TypeDecl {
+        self.get_static_kind("list")
+    }
+
+    fn analyze_collection(&self, expressions: Vec<Box<Expression>>) {}
 }

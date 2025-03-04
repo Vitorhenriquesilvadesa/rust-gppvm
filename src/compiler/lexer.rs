@@ -32,6 +32,7 @@ pub enum OperatorKind {
     LessEqual,
     Equal,
     Not,
+    Arrow,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -217,7 +218,11 @@ impl Lexer {
             '{' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftBrace)),
             '}' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightBrace)),
             '+' => self.make_token(TokenKind::Operator(OperatorKind::Plus)),
-            '-' => self.make_token(TokenKind::Operator(OperatorKind::Minus)),
+            '-' => if self.try_eat('>') {
+                self.make_token(TokenKind::Operator(OperatorKind::Arrow))
+            } else {
+                self.make_token(TokenKind::Operator(OperatorKind::Minus))
+            }
             '*' => {
                 if self.try_eat('*') {
                     if self.try_eat('=') {

@@ -162,14 +162,41 @@ pub struct SemanticAnalyzer {
     current_static_id: u32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionPrototype {
+    name: String,
+    params: Vec<FieldDeclaration>,
+    arity: usize,
+    return_kind: TypeDecl,
+}
+
+impl FunctionPrototype {
+    pub fn new(
+        name: String,
+        params: Vec<FieldDeclaration>,
+        arity: usize,
+        return_kind: TypeDecl
+    ) -> Self {
+        Self { name, params, arity, return_kind }
+    }
+}
+
+impl std::hash::Hash for FunctionPrototype {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
 pub struct SymbolTable {
     names: HashMap<String, StaticValue>,
+    functions: HashMap<String, FunctionPrototype>,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
             names: HashMap::new(),
+            functions: HashMap::new(),
         }
     }
 
@@ -179,6 +206,14 @@ impl SymbolTable {
 
     fn get(&self, name: &str) -> Option<&StaticValue> {
         self.names.get(name)
+    }
+
+    fn get_function(&mut self, name: &str) -> Option<&mut FunctionPrototype> {
+        self.functions.get_mut(name)
+    }
+
+    fn define_function(&mut self, name: String, value: FunctionPrototype) {
+        self.functions.insert(name, value);
     }
 }
 
@@ -213,14 +248,17 @@ impl SemanticAnalyzer {
 
     fn initialize_predefined_types(&mut self) {
         self.create_and_define_type("bool", vec![]);
-        self.create_and_define_type("str", vec![]);
+        self.create_and_define_type("str", vec!["iterator"]);
         self.create_and_define_type("float", vec![]);
-        self.create_and_define_type("iterator", vec!["iterator"]);
+        self.create_and_define_type("iterator", vec![]);
         self.create_and_define_type("list", vec!["iterator"]);
+        self.create_and_define_type("tuple", vec!["iterator"]);
     }
 
     fn create_and_define_type(&mut self, name: &str, archetypes: Vec<&str>) {
         let mut type_decl = TypeDecl::new(name.to_string(), self.get_static_id());
+
+        type_decl.add_archetype(Archetype::new(name.to_string().clone()));
 
         for archetype_name in archetypes {
             type_decl.add_archetype(Archetype::new(archetype_name.to_string()));
@@ -255,7 +293,8 @@ impl SemanticAnalyzer {
                 self.analyze_decorator(hash_token, attribs.clone())
             }
             Statement::Type(name, fields) => self.analyze_type(name, fields),
-            Statement::Function(name, params, body) => self.analyze_function(name, params, *body),
+            Statement::Function(name, params, body, return_kind) =>
+                self.analyze_function(name, params, *body, return_kind),
             Statement::Variable(name, value) => self.analyze_variable_declaration(name, value),
             Statement::ForEach(variable, condition, body) => {
                 self.analyze_iterator(variable, condition, *body)
@@ -301,6 +340,8 @@ impl SemanticAnalyzer {
             None => {
                 match value {
                     Some(expr) => {
+                        self.analyze_expr(expr.clone());
+
                         let value = SemanticValue::new(
                             Some(self.resolve_expr_type(expr)),
                             Value::Internal,
@@ -327,12 +368,29 @@ impl SemanticAnalyzer {
         );
     }
 
-    fn analyze_function(&mut self, name: Token, params: Vec<FieldDeclaration>, body: Statement) {
+    fn analyze_function(
+        &mut self,
+        name: Token,
+        params: Vec<FieldDeclaration>,
+        body: Statement,
+        return_kind: Token
+    ) {
         self.require_depth(
             Ordering::Less,
             1,
             format!("Functions are only allowed in top level code. At line {}.", name.line)
         );
+
+        let kind = self.get_static_kind(&return_kind.lexeme);
+
+        let function_definition = FunctionPrototype::new(
+            name.lexeme.clone(),
+            params.clone(),
+            params.len(),
+            kind.clone()
+        );
+
+        self.define_function(name.lexeme.clone(), function_definition);
 
         self.current_symbol = name.lexeme.clone();
         self.begin_scope();
@@ -369,7 +427,7 @@ impl SemanticAnalyzer {
         let next = self.next();
 
         match next {
-            Statement::Function(name, params, body) => {}
+            Statement::Function(name, params, body, return_kind) => {}
             _ =>
                 gpp_error!(
                     "Decorators are only accepted in function signatures. \x1b[33mAt line {}.\x1b[0m\n\x1b[36mHint:\x1b[0m Move \x1b[32m'#[...]'\x1b[0m to before \x1b[35m'def {}(...) {{...}}'\x1b[0m",
@@ -423,6 +481,7 @@ impl SemanticAnalyzer {
 
     fn analyze_expr(&mut self, expr: Expression) {
         match expr {
+            Expression::Void => {}
             Expression::Literal(token) => self.analyze_literal(token),
             Expression::Unary(token, expression) => self.check_operation_valid(token, expression),
             Expression::Arithmetic(left, op, right) => {
@@ -437,7 +496,9 @@ impl SemanticAnalyzer {
             Expression::Get(expression, token) => todo!(),
             Expression::Variable(token) => self.analyze_variable_get_expr(token),
             Expression::Set(expression, token, expression1) => todo!(),
-            Expression::Call(expression, token, expressions) => todo!(),
+            Expression::Call(callee, paren, args) => {
+                self.analyze_call_expression(callee, paren, args)
+            }
             Expression::Tuple(expressions) => todo!(),
             Expression::List(expressions) => self.analyze_collection(expressions),
             Expression::Type(tokens) => todo!(),
@@ -565,6 +626,9 @@ impl SemanticAnalyzer {
             Expression::Variable(name) => { self.resolve_identifier_type(name) }
             Expression::Assign(_, expr) => { self.resolve_expr_type(*expr) }
             Expression::Lambda => { gpp_error!("Lambda expressions are currently not supported.") }
+            Expression::Type(path) => { self.resolve_type(path) }
+            Expression::Call(callee, paren, args) =>
+                self.resolve_function_return_type(callee, paren, args),
             _ => gpp_error!("Expression {expression:?} are not supported."),
         }
     }
@@ -600,10 +664,10 @@ impl SemanticAnalyzer {
 
     fn analyze_assignment_expr(&mut self, token: Token, expression: Box<Expression>) {
         let symbol = self.context().name(&token.lexeme);
-
         match symbol {
             Some(sv) => {
                 self.analyze_expr(*expression.clone());
+
                 let value_type = self.resolve_expr_type(*expression.clone());
                 let symbol_type = sv.kind;
 
@@ -724,4 +788,100 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_collection(&self, expressions: Vec<Box<Expression>>) {}
+
+    fn analyze_call_expression(
+        &mut self,
+        callee: Box<Expression>,
+        paren: Token,
+        args: Vec<Expression>
+    ) {
+        if let Expression::Variable(name) = *callee {
+            if self.current_symbol.clone() == name.lexeme.clone() {
+                gpp_error!(
+                    "Recursive calls are not allowed in current version. At line {}.",
+                    name.line
+                );
+            }
+            match self.get_function(&name.lexeme.clone()) {
+                Some(prototype) => {
+                    let prototype = prototype.clone();
+
+                    if prototype.arity != args.len() {
+                        gpp_error!(
+                            "Expect {} arguments, but got {}. At line {}.",
+                            prototype.arity,
+                            args.len(),
+                            paren.line
+                        );
+                    }
+
+                    self.assert_function_args(prototype, args);
+                }
+                None =>
+                    gpp_error!(
+                        "Function '{}' are not declared in this scope.",
+                        name.lexeme.clone()
+                    ),
+            }
+        } else {
+            gpp_error!("Call functions inside modules are currently not allowed.");
+        }
+    }
+
+    fn define_function(&mut self, name: String, value: FunctionPrototype) {
+        self.symbol_table.define_function(name, value);
+    }
+
+    fn resolve_function_return_type(
+        &mut self,
+        callee: Box<Expression>,
+        paren: Token,
+        args: Vec<Expression>
+    ) -> TypeDecl {
+        if let Expression::Variable(name) = *callee {
+            let function = self.symbol_table.get_function(&name.lexeme.clone());
+
+            match function {
+                Some(prototype) => {
+                    return prototype.return_kind.clone();
+                }
+                None =>
+                    gpp_error!(
+                        "Function '{}' are not declared in this scope.",
+                        name.lexeme.clone()
+                    ),
+            }
+        } else {
+            gpp_error!("Call functions inside modules are currently not allowed.");
+        }
+    }
+
+    fn assert_function_args(&mut self, prototype: FunctionPrototype, args: Vec<Expression>) {
+        for (index, arg) in args.iter().enumerate() {
+            let proto_arg_kind = self.resolve_expr_type(prototype.params[index].kind.clone());
+            let passed_arg_kind = self.resolve_expr_type(arg.clone());
+            self.assert_archetype_kind(
+                arg.clone(),
+                proto_arg_kind.clone(),
+                format!(
+                    "Expect '{}' to '{}' param, but got '{}'.",
+                    proto_arg_kind.name,
+                    prototype.params[index].name.lexeme,
+                    passed_arg_kind.name
+                ).to_string()
+            );
+        }
+    }
+
+    fn get_function(&mut self, name: &str) -> Option<&mut FunctionPrototype> {
+        self.symbol_table.get_function(name)
+    }
+
+    fn resolve_type(&self, path: Vec<Token>) -> TypeDecl {
+        if path.len() != 1 {
+            gpp_error!("Modules are currently not supported. At line {}.", path[0].line);
+        } else {
+            self.get_static_kind(&path.first().unwrap().lexeme)
+        }
+    }
 }

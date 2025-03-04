@@ -37,6 +37,7 @@ pub enum Expression {
     Type(Vec<Token>),
     Attribute(Token, Vec<Box<Expression>>),
     Group(Box<Expression>),
+    Void,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +55,7 @@ pub enum Statement {
     // region:  --- Declarations
     Decorator(Token, Vec<Expression>),
     Type(Token, Vec<FieldDeclaration>),
-    Function(Token, Vec<FieldDeclaration>, Box<Statement>),
+    Function(Token, Vec<FieldDeclaration>, Box<Statement>, Token),
     Global,
     Variable(Token, Option<Expression>),
     // endregion:  --- Statements
@@ -65,8 +66,8 @@ pub enum Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDeclaration {
-    name: Token,
-    kind: Expression,
+    pub name: Token,
+    pub kind: Expression,
 }
 
 pub enum CollectionKind {
@@ -106,6 +107,7 @@ impl Display for Expression {
             Expression::Type(types) => write!(f, "List({:?})", types),
             Expression::Group(expr) => write!(f, "Group({:?})", expr),
             Expression::Attribute(name, args) => write!(f, "Attribute({:?}, {:?})", name, args),
+            Expression::Void => write!(f, "Void()"),
         }
     }
 }
@@ -270,6 +272,20 @@ impl Parser {
             String::from("Expect ')' after function params.")
         );
 
+        let mut return_kind: Token = Token::new(
+            TokenKind::Identifier,
+            "void".to_string(),
+            self.previous().line,
+            self.previous().column
+        );
+
+        if self.try_eat(&[TokenKind::Operator(OperatorKind::Arrow)]) {
+            return_kind = self.eat(
+                TokenKind::Identifier,
+                "Expect return kind after function params.".to_string()
+            );
+        }
+
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
             String::from(
@@ -279,7 +295,7 @@ impl Parser {
 
         let body = self.parse_scope();
 
-        Statement::Function(function_name, params, Box::new(body))
+        Statement::Function(function_name, params, Box::new(body), return_kind)
     }
 
     fn type_declaration(&mut self) -> Statement {

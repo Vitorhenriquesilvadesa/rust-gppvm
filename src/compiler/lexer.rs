@@ -79,7 +79,8 @@ pub enum PunctuationKind {
 #[allow(dead_code)]
 pub enum Literal {
     String,
-    Number,
+    Int,
+    Float,
     Boolean,
 }
 
@@ -302,17 +303,25 @@ impl Lexer {
             self.advance();
         }
 
+        let mut is_float = false;
+
         if self.check('.') && self.is_digit(self.peek_next()) {
             self.advance();
 
             while self.is_digit(self.peek()) {
                 self.advance();
             }
+
+            is_float = true;
         }
 
         let lexeme: String = self.source.chars().skip(self.start).take(self.length).collect();
 
-        self.make_token_with_lexeme(TokenKind::Literal(Literal::Number), lexeme);
+        if is_float {
+            self.make_token_with_lexeme(TokenKind::Literal(Literal::Float), lexeme);
+        } else {
+            self.make_token_with_lexeme(TokenKind::Literal(Literal::Int), lexeme);
+        }
     }
 
     fn is_alpha_numeric(&self, c: char) -> bool {

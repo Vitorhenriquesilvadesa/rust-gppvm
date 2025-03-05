@@ -122,8 +122,8 @@ impl ContextScope {
         self.names.get_mut(name).unwrap().kind = Some(kind);
     }
 
-    fn declare_name(&mut self, lexeme: String, value: SemanticValue) {
-        self.names.insert(lexeme, value);
+    fn declare_name(&mut self, name: String, value: SemanticValue) {
+        self.names.insert(name, value);
     }
 }
 
@@ -150,6 +150,10 @@ impl ContextStack {
 
     fn peek(&mut self) -> &mut ContextScope {
         self.scopes.last_mut().unwrap()
+    }
+
+    fn get(&mut self, i: usize) -> &mut ContextScope {
+        self.scopes.get_mut(i).unwrap()
     }
 }
 
@@ -248,8 +252,10 @@ impl SemanticAnalyzer {
 
     fn initialize_predefined_types(&mut self) {
         self.create_and_define_type("bool", vec![]);
+        self.create_and_define_type("number", vec![]);
         self.create_and_define_type("str", vec!["iterator"]);
-        self.create_and_define_type("float", vec![]);
+        self.create_and_define_type("float", vec!["number"]);
+        self.create_and_define_type("int", vec!["number"]);
         self.create_and_define_type("iterator", vec![]);
         self.create_and_define_type("list", vec!["iterator"]);
         self.create_and_define_type("tuple", vec!["iterator"]);
@@ -306,13 +312,17 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_iterator(&mut self, variable: Token, condition: Expression, body: Statement) {
-        self.assert_archetype_kind(
-            condition,
-            self.get_static_kind("iterator"),
-            format!("Expect iterator. At line {}.", variable.line)
-        );
-
         self.begin_scope();
+
+        if let Expression::Variable(variable) = condition.clone() {
+            self.assert_archetype_kind(
+                condition,
+                self.get_static_kind("iterator"),
+                "Expect iterator in 'for' loop.".to_string()
+            );
+        } else {
+            let iterator_kind: TypeDecl = self.resolve_iterator_kind(condition);
+        }
 
         match body {
             Statement::Scope(stmts) => {
@@ -390,10 +400,19 @@ impl SemanticAnalyzer {
             kind.clone()
         );
 
-        self.define_function(name.lexeme.clone(), function_definition);
+        self.define_function(name.lexeme.clone(), function_definition.clone());
 
         self.current_symbol = name.lexeme.clone();
+
         self.begin_scope();
+
+        for arg in function_definition.params {
+            let kind = self.resolve_expr_type(arg.kind);
+            self.define_local(
+                arg.name.lexeme.clone(),
+                SemanticValue::new(Some(kind), Value::Internal, arg.name.line)
+            );
+        }
 
         match body {
             Statement::Scope(stmts) => {
@@ -480,7 +499,7 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_expr(&mut self, expr: Expression) {
-        match expr {
+        match expr.clone() {
             Expression::Void => {}
             Expression::Literal(token) => self.analyze_literal(token),
             Expression::Unary(token, expression) => self.check_operation_valid(token, expression),
@@ -500,7 +519,7 @@ impl SemanticAnalyzer {
                 self.analyze_call_expression(callee, paren, args)
             }
             Expression::Tuple(expressions) => todo!(),
-            Expression::List(expressions) => self.analyze_collection(expressions),
+            Expression::List(expressions) => self.analyze_collection(expr),
             Expression::Type(tokens) => todo!(),
             Expression::Attribute(token, expressions) => todo!(),
             Expression::Group(expression) => todo!(),
@@ -589,14 +608,15 @@ impl SemanticAnalyzer {
 
     fn resolve_expr_type(&mut self, expression: Expression) -> TypeDecl {
         match expression {
-            Expression::List(elements) => { self.resolve_list_type(elements) }
+            Expression::List(elements) => { self.get_static_kind("list") }
             Expression::Literal(token) => {
                 match token.kind {
                     TokenKind::Identifier => { self.resolve_identifier_type(token) }
                     TokenKind::Literal(literal) => {
                         match literal {
                             Literal::String => self.get_symbol("str").unwrap().kind.clone(),
-                            Literal::Number => self.get_symbol("float").unwrap().kind.clone(),
+                            Literal::Float => self.get_symbol("float").unwrap().kind.clone(),
+                            Literal::Int => self.get_symbol("int").unwrap().kind.clone(),
                             Literal::Boolean => self.get_symbol("bool").unwrap().kind.clone(),
                         }
                     }
@@ -642,28 +662,35 @@ impl SemanticAnalyzer {
     }
 
     fn resolve_identifier_type(&mut self, token: Token) -> TypeDecl {
-        match self.context().name(&token.lexeme) {
-            Some(symbol) =>
-                match symbol.kind {
-                    Some(kind) => kind,
-                    None =>
-                        gpp_error!(
-                            "The kind of '{}' are not known here. At line {}.",
-                            token.lexeme,
-                            token.line
-                        ),
+        let mut i = self.context_stack.len() - 1;
+
+        loop {
+            match self.context_stack.get(i).name(&token.lexeme) {
+                Some(symbol) =>
+                    match symbol.kind {
+                        Some(kind) => {
+                            return kind;
+                        }
+                        None =>
+                            gpp_error!(
+                                "The kind of '{}' are not known here. At line {}.",
+                                token.lexeme,
+                                token.line
+                            ),
+                    }
+                None => {
+                    i -= 1;
+                    continue;
                 }
-            None =>
-                gpp_error!(
-                    "The name '{}' are not declared here. At line {}.",
-                    token.lexeme,
-                    token.line
-                ),
+            }
         }
+
+        gpp_error!("The name '{}' are not declared here. At line {}.", token.lexeme, token.line);
     }
 
     fn analyze_assignment_expr(&mut self, token: Token, expression: Box<Expression>) {
         let symbol = self.context().name(&token.lexeme);
+
         match symbol {
             Some(sv) => {
                 self.analyze_expr(*expression.clone());
@@ -740,14 +767,15 @@ impl SemanticAnalyzer {
                         token.line
                     );
 
-                    self.is_same_kind(
-                        left_kind.clone(),
-                        self.get_static_kind("float"),
+                    self.assert_archetype_kind(
+                        *left.clone(),
+                        self.get_static_kind("number"),
                         msg.clone()
                     );
-                    self.is_same_kind(
-                        right_kind.clone(),
-                        self.get_static_kind("float"),
+
+                    self.assert_archetype_kind(
+                        *right.clone(),
+                        self.get_static_kind("number"),
                         msg.clone()
                     );
                 }
@@ -767,6 +795,19 @@ impl SemanticAnalyzer {
         }
     }
 
+    /// Asserts that an expression's type conforms to a given archetype.
+    ///
+    /// # Parameters
+    /// - `expr`: The expression whose type needs to be checked.
+    /// - `archetype_source`: A `TypeDecl` representing the expected archetype(s).
+    /// - `msg`: A custom error message to be included if the assertion fails.
+    ///
+    /// # Behavior
+    /// - Resolves the type of the given expression.
+    /// - Checks if the expression's type implements all required archetypes from `archetype_source`.
+    /// - If the type does not conform, an error is raised with a detailed message.
+    ///
+    /// This function ensures that expressions match the expected type constraints, enforcing type safety.
     fn assert_archetype_kind(&mut self, expr: Expression, archetype_source: TypeDecl, msg: String) {
         let expr_kind = self.resolve_expr_type(expr);
 
@@ -779,15 +820,75 @@ impl SemanticAnalyzer {
         }
 
         if !is_same {
-            gpp_error!("{}", msg);
+            gpp_error!(
+                "Expect {}, but got {}. Compiler message: {}",
+                archetype_source.name,
+                expr_kind.name,
+                msg
+            );
         }
     }
 
-    fn resolve_list_type(&self, elements: Vec<Box<Expression>>) -> TypeDecl {
-        self.get_static_kind("list")
+    /// Infers the type of a list based on its elements.
+    ///
+    /// # Parameters
+    /// - `elements`: A slice of boxed expressions representing the elements of the list.
+    ///
+    /// # Returns
+    /// - A `TypeDecl` representing the inferred type of the list.
+    ///
+    /// # Type Inference Process
+    /// 1. If the list is empty, an error is raised because type inference is impossible.
+    /// 2. If the list contains only one element, the type of that element is used as the list type.
+    /// 3. Otherwise, the function:
+    ///    - Resolves the type of each element.
+    ///    - Collects all unique archetypes found across the elements.
+    ///    - Identifies archetypes that are common to all elements.
+    ///    - Determines the final list type based on these common archetypes.
+    ///
+    /// The inferred type is printed for debugging purposes before being returned.
+    fn resolve_list_type(&mut self, elements: &[Box<Expression>]) -> TypeDecl {
+        if elements.is_empty() {
+            gpp_error!("Cannot infer type of empty list.");
+        }
+
+        if elements.len() == 1 {
+            let common_kind = self.resolve_expr_type(*elements[0].clone());
+
+            println!("Inferred list kind: {:?}.", common_kind.name);
+
+            return common_kind;
+        }
+
+        let mut unique_archetypes: HashSet<Archetype> = HashSet::new();
+        let mut common_archetypes: Vec<Archetype> = Vec::new();
+        let element_types: Vec<TypeDecl> = elements
+            .iter()
+            .map(|element| self.resolve_expr_type(*element.clone()))
+            .collect();
+
+        for element_type in &element_types {
+            unique_archetypes.extend(element_type.archetypes.iter().cloned());
+        }
+
+        for archetype in &unique_archetypes {
+            if element_types.iter().all(|ty| ty.archetypes.contains(archetype)) {
+                common_archetypes.push(archetype.clone());
+            }
+        }
+
+        if common_archetypes.is_empty() {
+            gpp_error!("Cannot infer list kind.");
+        }
+
+        let common_kind = self.get_by_archetype(&common_archetypes);
+        println!("Inferred list kind: {:?}.", common_kind.name);
+        common_kind
     }
 
-    fn analyze_collection(&self, expressions: Vec<Box<Expression>>) {}
+    fn analyze_collection(&mut self, collection: Expression) {
+        self.resolve_iterator_kind(collection);
+    }
 
     fn analyze_call_expression(
         &mut self,
@@ -860,6 +961,7 @@ impl SemanticAnalyzer {
         for (index, arg) in args.iter().enumerate() {
             let proto_arg_kind = self.resolve_expr_type(prototype.params[index].kind.clone());
             let passed_arg_kind = self.resolve_expr_type(arg.clone());
+
             self.assert_archetype_kind(
                 arg.clone(),
                 proto_arg_kind.clone(),
@@ -882,6 +984,30 @@ impl SemanticAnalyzer {
             gpp_error!("Modules are currently not supported. At line {}.", path[0].line);
         } else {
             self.get_static_kind(&path.first().unwrap().lexeme)
+        }
+    }
+
+    fn define_local(&mut self, name: String, value: SemanticValue) {
+        self.context().declare_name(name, value);
+    }
+
+    fn resolve_iterator_kind(&mut self, iterator: Expression) -> TypeDecl {
+        let expr_kind = self.resolve_expr_type(iterator.clone());
+
+        match iterator {
+            Expression::List(elements) => { self.resolve_list_type(&elements) }
+            _ => {
+                gpp_error!("Expect list, but got {:?}.", iterator);
+            }
+        }
+    }
+
+    fn get_by_archetype(&mut self, sets: &[Archetype]) -> TypeDecl {
+        let target_set: HashSet<_> = sets.iter().cloned().collect();
+
+        match self.symbol_table.names.iter().find(|decl| decl.1.kind.archetypes == target_set) {
+            Some(type_decl) => type_decl.1.kind.clone(),
+            None => gpp_error!("Cannot find type with specified archetypes: {sets:?}."),
         }
     }
 }

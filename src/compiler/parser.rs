@@ -704,7 +704,8 @@ impl Parser {
         if
             self.try_eat(
                 &[
-                    TokenKind::Literal(Literal::Number),
+                    TokenKind::Literal(Literal::Int),
+                    TokenKind::Literal(Literal::Float),
                     TokenKind::Literal(Literal::Boolean),
                     TokenKind::Literal(Literal::String),
                 ]

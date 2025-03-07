@@ -1,8 +1,12 @@
-def some_function(myList: list) -> list {
+def some_function(myList: iterator) -> bool {
 
-    let someList = [true];
+    let y = -(1+1) - 1;
 
-    for i in someList {
-        
+    if 'str' == 'str' {
+
     }
+}
+
+def main() -> int {
+    
 }

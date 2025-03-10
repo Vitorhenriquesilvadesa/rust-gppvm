@@ -34,7 +34,7 @@ pub enum Expression {
     Call(Box<Expression>, Token, Vec<Expression>),
     Tuple(Vec<Box<Expression>>),
     List(Vec<Box<Expression>>),
-    Type(Vec<Token>),
+    TypeComposition(Vec<Token>),
     Attribute(Token, Vec<Box<Expression>>),
     Group(Box<Expression>),
     Void,
@@ -104,10 +104,10 @@ impl Display for Expression {
             Expression::Call(callee, _, args) => write!(f, "Call({:?}, {:?})", callee, args),
             Expression::Tuple(values) => write!(f, "Tuple({:?})", values),
             Expression::List(values) => write!(f, "List({:?})", values),
-            Expression::Type(types) => write!(f, "List({:?})", types),
             Expression::Group(expr) => write!(f, "Group({:?})", expr),
             Expression::Attribute(name, args) => write!(f, "Attribute({:?}, {:?})", name, args),
             Expression::Void => write!(f, "Void()"),
+            Expression::TypeComposition(tokens) => write!(f, "TypeComposition"),
         }
     }
 }
@@ -242,11 +242,9 @@ impl Parser {
                 String::from("Expect ':' after param name.")
             );
 
-            let param_type = vec![
-                self.eat(TokenKind::Identifier, String::from("Expect param type."))
-            ];
+            let param_type = self.type_composition();
 
-            params.push(FieldDeclaration::new(param_name, Expression::Type(param_type)));
+            params.push(FieldDeclaration::new(param_name, param_type));
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
                 let param_name = self.eat(
@@ -259,11 +257,9 @@ impl Parser {
                     String::from("Expect ':' after param name.")
                 );
 
-                let param_type = vec![
-                    self.eat(TokenKind::Identifier, String::from("Expect param type."))
-                ];
+                let param_type = self.type_composition();
 
-                params.push(FieldDeclaration::new(param_name, Expression::Type(param_type)));
+                params.push(FieldDeclaration::new(param_name, param_type));
             }
         }
 
@@ -298,6 +294,18 @@ impl Parser {
         Statement::Function(function_name, params, Box::new(body), return_kind)
     }
 
+    fn type_composition(&mut self) -> Expression {
+        let mut names: Vec<Token> = Vec::new();
+
+        names.push(self.eat(TokenKind::Identifier, String::from("Expect type name.")));
+
+        while self.try_eat(&[TokenKind::Operator(OperatorKind::BitwiseAnd)]) {
+            names.push(self.eat(TokenKind::Identifier, String::from("Expect type name.")));
+        }
+
+        Expression::TypeComposition(names)
+    }
+
     fn type_declaration(&mut self) -> Statement {
         let type_name = self.eat(
             TokenKind::Identifier,
@@ -322,7 +330,7 @@ impl Parser {
                 String::from("Expect ':' after field name.")
             );
 
-            let mut field_type: Expression = Expression::Type(vec![self.advance()]);
+            let mut field_type: Expression = self.type_composition();
             fields.push(FieldDeclaration::new(field_name, field_type));
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
@@ -340,7 +348,7 @@ impl Parser {
                     String::from("Expect ':' after field name.")
                 );
 
-                field_type = Expression::Type(vec![self.advance()]);
+                field_type = self.type_composition();
                 fields.push(FieldDeclaration::new(field_name, field_type));
             }
         }

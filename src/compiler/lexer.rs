@@ -268,7 +268,7 @@ impl Lexer {
             }
             '"' => self.string('"').expect("Error in string."),
             '\'' => self.string('\'').expect("Error in string."),
-            '.' => self.make_token(TokenKind::Dot),
+            '.' => self.make_token(TokenKind::Punctuation(PunctuationKind::Dot)),
 
             _ =>
                 match c {

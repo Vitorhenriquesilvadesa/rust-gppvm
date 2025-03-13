@@ -1,7 +1,14 @@
 #![allow(warnings)]
 
 use crate::gpp_error;
-use std::{ cmp::Ordering, collections::{ HashMap, HashSet }, fmt::{ write, Display }, string };
+use std::{
+    cmp::Ordering,
+    collections::{ HashMap, HashSet },
+    env,
+    fmt::{ write, Display },
+    process,
+    string,
+};
 
 use super::{
     lexer::{ Literal, OperatorKind, PunctuationKind, Token, TokenKind },
@@ -25,6 +32,7 @@ pub enum Value {
     Boolean(bool),
     String(String),
     Object(ObjectDescriptor),
+    Kind,
     Internal,
 }
 
@@ -75,8 +83,64 @@ impl Archetype {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDescriptor {
+    name: String,
+    kind: TypeDescriptor,
+}
+
+impl FieldDescriptor {
+    pub fn new(name: String, kind: TypeDescriptor) -> Self {
+        Self { name, kind }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeDescriptor {
+    name: String,
+    id: u32,
+    archetypes: HashSet<Archetype>,
+    fields: HashMap<String, FieldDescriptor>,
+}
+
+impl TypeDescriptor {
+    pub fn new(
+        name: String,
+        archetypes: HashSet<Archetype>,
+        fields: HashMap<String, FieldDescriptor>,
+        id: u32
+    ) -> Self {
+        Self { name, archetypes, fields, id }
+    }
+
+    pub fn from_type_decl(decl: TypeDecl) -> Self {
+        Self {
+            archetypes: decl.archetypes,
+            fields: HashMap::new(),
+            name: decl.name,
+            id: decl.kind_id,
+        }
+    }
+
+    pub fn from_type_decl_with_fields(
+        decl: TypeDecl,
+        fields: HashMap<String, FieldDescriptor>
+    ) -> Self {
+        Self {
+            archetypes: decl.archetypes,
+            fields,
+            name: decl.name,
+            id: decl.kind_id,
+        }
+    }
+
+    fn implements_archetype(&self, archetype: &Archetype) -> bool {
+        self.archetypes.contains(archetype)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
-struct TypeDecl {
+pub struct TypeDecl {
     name: String,
     kind_id: u32,
     archetypes: HashSet<Archetype>,
@@ -102,30 +166,30 @@ impl TypeDecl {
 
 #[derive(Clone, Debug)]
 struct SemanticValue {
-    kind: Option<TypeDecl>,
+    kind: Option<TypeDescriptor>,
     value: Value,
     line: usize,
 }
 
 impl SemanticValue {
-    fn new(kind: Option<TypeDecl>, value: Value, line: usize) -> Self {
+    fn new(kind: Option<TypeDescriptor>, value: Value, line: usize) -> Self {
         Self { kind, value, line }
     }
 }
 
 #[derive(Clone, Debug)]
 struct StaticValue {
-    kind: TypeDecl,
+    kind: TypeDescriptor,
     value: Value,
 }
 
 impl StaticValue {
-    fn new(kind: TypeDecl, value: Value) -> Self {
+    fn new(kind: TypeDescriptor, value: Value) -> Self {
         Self { kind, value }
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct ContextScope {
     names: HashMap<String, SemanticValue>,
 }
@@ -145,7 +209,7 @@ impl ContextScope {
         if self.contains_name(name) { Some(self.names.get(name).unwrap().clone()) } else { None }
     }
 
-    fn set_infered_kind(&mut self, name: &String, kind: TypeDecl) {
+    fn set_infered_kind(&mut self, name: &String, kind: TypeDescriptor) {
         self.names.get_mut(name).unwrap().kind = Some(kind);
     }
 
@@ -154,6 +218,7 @@ impl ContextScope {
     }
 }
 
+#[derive(Debug, Clone)]
 struct ContextStack {
     scopes: Vec<ContextScope>,
 }
@@ -184,6 +249,13 @@ impl ContextStack {
     }
 }
 
+#[derive(Eq, PartialEq)]
+enum SymbolKind {
+    Function,
+    Kind,
+    None,
+}
+
 pub struct SemanticAnalyzer {
     statements: Vec<Statement>,
     context_stack: ContextStack,
@@ -191,6 +263,7 @@ pub struct SemanticAnalyzer {
     current_stmt: usize,
     current_symbol: String,
     current_static_id: u32,
+    current_symbol_kind: SymbolKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,7 +271,7 @@ pub struct FunctionPrototype {
     name: String,
     params: Vec<FieldDeclaration>,
     arity: usize,
-    return_kind: TypeDecl,
+    return_kind: TypeDescriptor,
 }
 
 impl FunctionPrototype {
@@ -206,7 +279,7 @@ impl FunctionPrototype {
         name: String,
         params: Vec<FieldDeclaration>,
         arity: usize,
-        return_kind: TypeDecl
+        return_kind: TypeDescriptor
     ) -> Self {
         Self {
             name,
@@ -223,6 +296,7 @@ impl std::hash::Hash for FunctionPrototype {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct SymbolTable {
     names: HashMap<String, StaticValue>,
     functions: HashMap<String, FunctionPrototype>,
@@ -253,11 +327,22 @@ impl SymbolTable {
     }
 }
 
-pub struct IntermediateCode {}
+#[derive(Debug, Clone)]
+pub struct SemanticCode {
+    table: SymbolTable,
+    statements: Vec<Statement>,
+}
 
-impl IntermediateCode {
-    pub fn new() -> Self {
-        IntermediateCode {}
+impl SemanticCode {
+    pub fn new(table: SymbolTable, statements: Vec<Statement>) -> Self {
+        SemanticCode {
+            table,
+            statements,
+        }
+    }
+
+    pub fn get_table(&self) -> &SymbolTable {
+        &self.table
     }
 }
 
@@ -270,6 +355,7 @@ impl SemanticAnalyzer {
             current_symbol: String::new(),
             symbol_table: SymbolTable::new(),
             current_static_id: 0u32,
+            current_symbol_kind: SymbolKind::None,
         };
 
         analyzer.initialize_predefined_types();
@@ -286,12 +372,39 @@ impl SemanticAnalyzer {
         self.create_and_define_type("object", vec![]);
         self.create_and_define_type("bool", vec![]);
         self.create_and_define_type("number", vec![]);
-        self.create_and_define_type("str", vec!["iterator"]);
+
+        let number_descriptor = self.get_static_kind("number");
+        self.add_field_to_defined_type("mod", &number_descriptor, &number_descriptor);
+
         self.create_and_define_type("float", vec!["number"]);
         self.create_and_define_type("int", vec!["number"]);
+
+        let int_descriptor = self.get_static_kind("int");
+
         self.create_and_define_type("iterator", vec![]);
-        self.create_and_define_type("list", vec!["iterator"]);
+        let iterator_descriptor = self.get_static_kind("iterator");
+
+        self.add_field_to_defined_type("length", &iterator_descriptor, &int_descriptor);
+
+        self.create_and_define_type("str", vec!["iterator"]);
         self.create_and_define_type("tuple", vec!["iterator"]);
+        self.create_and_define_type("list", vec!["iterator"]);
+    }
+
+    fn add_field_to_defined_type(
+        &mut self,
+        name: &str,
+        target_descriptor: &TypeDescriptor,
+        field_descriptor: &TypeDescriptor
+    ) {
+        let fields = &mut self.symbol_table.names
+            .get_mut(&target_descriptor.name)
+            .unwrap().kind.fields;
+
+        fields.insert(
+            name.to_string(),
+            FieldDescriptor::new(field_descriptor.name.clone(), field_descriptor.clone())
+        );
     }
 
     fn create_and_define_type(&mut self, name: &str, archetypes: Vec<&str>) {
@@ -303,11 +416,21 @@ impl SemanticAnalyzer {
 
         type_decl.add_archetype(Archetype::new(name.to_string().clone()));
 
-        for archetype_name in archetypes {
+        for archetype_name in &archetypes {
             type_decl.add_archetype(Archetype::new(archetype_name.to_string()));
         }
 
-        let static_value = StaticValue::new(type_decl, Value::Internal);
+        let mut type_descriptor = TypeDescriptor::from_type_decl(type_decl);
+
+        for archetype_name in &archetypes {
+            let kind = self.get_static_kind(&archetype_name);
+
+            for (name, field_descriptor) in &kind.fields {
+                type_descriptor.fields.insert(name.clone(), field_descriptor.clone());
+            }
+        }
+
+        let static_value = StaticValue::new(type_descriptor, Value::Kind);
         self.define_symbol(name.to_string(), static_value);
     }
 
@@ -315,7 +438,7 @@ impl SemanticAnalyzer {
         self.symbol_table.define(name, value);
     }
 
-    pub fn analyze(&mut self, statements: Vec<Statement>) -> IntermediateCode {
+    pub fn analyze(&mut self, statements: Vec<Statement>) -> SemanticCode {
         self.reset_internal_state(statements);
 
         let mut stmt: Statement;
@@ -330,11 +453,12 @@ impl SemanticAnalyzer {
             gpp_error!("Missing 'main' function.");
         }
 
-        IntermediateCode::new()
+        SemanticCode::new(self.symbol_table.clone(), self.statements.clone())
     }
 
     fn analyze_stmt(&mut self, stmt: Statement) {
         match stmt {
+            Statement::Return(value) => self.analyze_return(value),
             Statement::Expression(expr) => self.analyze_expr(expr.clone()),
             Statement::Decorator(hash_token, attribs) => {
                 self.analyze_decorator(hash_token, attribs.clone())
@@ -357,14 +481,27 @@ impl SemanticAnalyzer {
     fn analyze_iterator(&mut self, variable: Token, condition: Expression, body: Statement) {
         self.begin_scope();
 
-        if let Expression::Variable(variable) = condition.clone() {
-            self.assert_archetype_kind(
-                condition,
-                self.get_static_kind("iterator"),
-                "Expect iterator in 'for' loop.".to_string()
-            );
-        } else {
-            let iterator_kind: TypeDecl = self.resolve_iterator_kind(condition);
+        match condition.clone() {
+            Expression::Variable(variable) => {
+                self.assert_archetype_kind(
+                    condition,
+                    self.get_static_kind("iterator"),
+                    "Expect iterator in 'for' loop.".to_string()
+                );
+            }
+
+            Expression::Call(callee, paren, args) => {
+                let kind = self.resolve_function_return_type(callee, paren, args);
+                self.assert_kind_equals(
+                    kind,
+                    self.get_static_kind("iterator"),
+                    "Expect iterator in for each declaration.".to_string()
+                );
+            }
+
+            _ => {
+                let iterator_kind: TypeDescriptor = self.resolve_iterator_kind(condition);
+            }
         }
 
         match body {
@@ -420,18 +557,57 @@ impl SemanticAnalyzer {
             format!("Type declarations are only allowed in top level code. At line {}.", name.line)
         );
 
+        self.current_symbol_kind = SymbolKind::Kind;
+
+        let mut decl = TypeDecl::new(name.lexeme.clone(), self.get_static_id());
+        decl.add_archetype(Archetype::new("object".to_string()));
+        decl.add_archetype(Archetype::new(name.lexeme.clone()));
+
+        let mut type_fields: HashMap<String, FieldDescriptor> = HashMap::new();
+
         for field in &fields {
             if let Expression::TypeComposition(mask) = field.kind.clone() {
-                let archetypes: Vec<Archetype> = self
-                    .resolve_type_composition(mask)
-                    .archetypes.into_iter()
-                    .collect();
+                let kind = self.resolve_type_composition(mask);
+                let archetypes: Vec<Archetype> = kind.archetypes.clone().into_iter().collect();
 
                 for archetype in archetypes {
                     self.get_static_kind(&archetype.name);
                 }
+
+                if type_fields.contains_key(&field.name.lexeme) {
+                    gpp_error!(
+                        "Field '{}' already declared at this point. At line {}.",
+                        field.name.lexeme,
+                        field.name.line
+                    );
+                }
+
+                type_fields.insert(
+                    field.name.lexeme.clone(),
+                    FieldDescriptor::new(field.name.lexeme.clone(), kind.clone())
+                );
             }
         }
+
+        let type_descriptor = TypeDescriptor::from_type_decl_with_fields(decl, type_fields.clone());
+
+        self.define_type(type_descriptor);
+
+        let constructor = FunctionPrototype::new(
+            name.lexeme.clone(),
+            fields.clone(),
+            type_fields.len(),
+            self.get_user_defined_kind(name.lexeme.clone())
+        );
+
+        self.define_function(name.lexeme.clone(), constructor);
+    }
+
+    fn define_type(&mut self, descriptor: TypeDescriptor) {
+        self.symbol_table.define(
+            descriptor.name.clone(),
+            StaticValue::new(descriptor, Value::Internal)
+        );
     }
 
     fn analyze_function(
@@ -439,7 +615,7 @@ impl SemanticAnalyzer {
         name: Token,
         params: Vec<FieldDeclaration>,
         body: Statement,
-        return_kind: Token
+        return_kind: Expression
     ) {
         self.require_depth(
             Ordering::Less,
@@ -447,7 +623,15 @@ impl SemanticAnalyzer {
             format!("Functions are only allowed in top level code. At line {}.", name.line)
         );
 
-        let kind = self.get_static_kind(&return_kind.lexeme);
+        self.current_symbol_kind = SymbolKind::Function;
+
+        let mut kind: TypeDescriptor;
+
+        if let Expression::TypeComposition(mask) = return_kind {
+            kind = self.resolve_type_composition(mask);
+        } else {
+            gpp_error!("Missing function return kind.");
+        }
 
         let function_definition = FunctionPrototype::new(
             name.lexeme.clone(),
@@ -568,7 +752,7 @@ impl SemanticAnalyzer {
                 self.analyze_assignment_expr(token, expression)
             }
             Expression::Lambda => todo!(),
-            Expression::Get(expression, token) => todo!(),
+            Expression::Get(expression, token) => self.analyze_get_expr(expression, token),
             Expression::Variable(token) => self.analyze_variable_get_expr(token),
             Expression::Set(expression, token, expression1) => todo!(),
             Expression::Call(callee, paren, args) => {
@@ -644,7 +828,7 @@ impl SemanticAnalyzer {
                     OperatorKind::Not => {
                         let expr_type = self.resolve_expr_type(*expression.clone());
 
-                        if expr_type.kind_id != self.get_static_kind_id("bool") {
+                        if expr_type.id != self.get_static_kind_id("bool") {
                             gpp_error!(
                                 "Cannot apply 'not' operator in a '{}' instance. At line {}.",
                                 expr_type.name,
@@ -659,7 +843,7 @@ impl SemanticAnalyzer {
         }
     }
 
-    fn resolve_expr_type(&mut self, expression: Expression) -> TypeDecl {
+    fn resolve_expr_type(&mut self, expression: Expression) -> TypeDescriptor {
         match expression {
             Expression::List(elements) => self.get_static_kind("list"),
             Expression::Literal(token) =>
@@ -724,6 +908,7 @@ impl SemanticAnalyzer {
             Expression::Call(callee, paren, args) => {
                 self.resolve_function_return_type(callee, paren, args)
             }
+            Expression::Get(object, token) => self.resolve_get_expr(object, token),
             Expression::Group(expression) => self.resolve_expr_type(*expression.clone()),
             _ => gpp_error!("Expression {expression:?} are not supported."),
         }
@@ -734,10 +919,19 @@ impl SemanticAnalyzer {
     }
 
     fn get_static_kind_id(&self, name: &str) -> u32 {
-        self.symbol_table.get(name).unwrap().kind.kind_id
+        self.symbol_table.get(name).unwrap().kind.id
     }
 
-    fn resolve_identifier_type(&mut self, token: Token) -> TypeDecl {
+    fn resolve_identifier_type(&mut self, token: Token) -> TypeDescriptor {
+        self.require_depth(
+            Ordering::Greater,
+            0,
+            format!(
+                "Get identifier value is only allowed inside functions. At line {}.",
+                token.line
+            )
+        );
+
         let mut i = self.context_stack.len() - 1;
 
         loop {
@@ -764,8 +958,29 @@ impl SemanticAnalyzer {
         gpp_error!("The name '{}' are not declared here. At line {}.", token.lexeme, token.line);
     }
 
+    fn get_name_in_depth(&mut self, name: &Token) -> Option<SemanticValue> {
+        let mut i = self.context_stack.len() - 1;
+
+        loop {
+            match self.context_stack.get(i).name(&name.lexeme) {
+                Some(symbol) => {
+                    return Some(symbol);
+                }
+                None => {
+                    if i == 0 {
+                        break;
+                    }
+                    i -= 1;
+                    continue;
+                }
+            }
+        }
+
+        gpp_error!("The name '{}' are not declared here. At line {}.", name.lexeme, name.line);
+    }
+
     fn analyze_assignment_expr(&mut self, token: Token, expression: Box<Expression>) {
-        let symbol = self.context().name(&token.lexeme);
+        let symbol = self.get_name_in_depth(&token);
 
         match symbol {
             Some(sv) => {
@@ -776,7 +991,7 @@ impl SemanticAnalyzer {
 
                 match symbol_type {
                     Some(kind) => {
-                        if kind.kind_id != value_type.kind_id {
+                        if kind.id != value_type.id {
                             gpp_error!(
                                 "Cannot assign '{}' with '{}' instance. At line {}.",
                                 kind.name,
@@ -797,12 +1012,12 @@ impl SemanticAnalyzer {
     fn assert_expression_kind(
         &mut self,
         expr: Expression,
-        expected_kind: TypeDecl,
+        expected_kind: TypeDescriptor,
         location: Token
     ) {
         let expr_kind = self.resolve_expr_type(expr);
 
-        if expr_kind.kind_id != expected_kind.kind_id {
+        if expr_kind.id != expected_kind.id {
             gpp_error!(
                 "Expect '{}', but got '{}'. At line {}.",
                 expected_kind.name,
@@ -812,7 +1027,7 @@ impl SemanticAnalyzer {
         }
     }
 
-    fn get_static_kind(&self, name: &str) -> TypeDecl {
+    fn get_static_kind(&self, name: &str) -> TypeDescriptor {
         self.symbol_table.get(name).unwrap().kind.clone()
     }
 
@@ -902,7 +1117,12 @@ impl SemanticAnalyzer {
     /// - If the type does not conform, an error is raised with a detailed message.
     ///
     /// This function ensures that expressions match the expected type constraints, enforcing type safety.
-    fn assert_archetype_kind(&mut self, expr: Expression, archetype_source: TypeDecl, msg: String) {
+    fn assert_archetype_kind(
+        &mut self,
+        expr: Expression,
+        archetype_source: TypeDescriptor,
+        msg: String
+    ) {
         let expr_kind = self.resolve_expr_type(expr);
 
         let mut is_same = true;
@@ -941,7 +1161,7 @@ impl SemanticAnalyzer {
     ///    - Determines the final list type based on these common archetypes.
     ///
     /// The inferred type is printed for debugging purposes before being returned.
-    fn resolve_list_type(&mut self, elements: &[Box<Expression>]) -> TypeDecl {
+    fn resolve_list_type(&mut self, elements: &[Box<Expression>]) -> TypeDescriptor {
         if elements.is_empty() {
             gpp_error!("Cannot infer type of empty list. At least one element is required.");
         }
@@ -1028,7 +1248,7 @@ impl SemanticAnalyzer {
         callee: Box<Expression>,
         paren: Token,
         args: Vec<Expression>
-    ) -> TypeDecl {
+    ) -> TypeDescriptor {
         if let Expression::Variable(name) = *callee {
             let function = self.symbol_table.get_function(&name.lexeme.clone());
 
@@ -1069,7 +1289,7 @@ impl SemanticAnalyzer {
         self.symbol_table.get_function(name)
     }
 
-    fn resolve_type(&self, path: Vec<Token>) -> TypeDecl {
+    fn resolve_type(&self, path: Vec<Token>) -> TypeDescriptor {
         if path.len() != 1 {
             gpp_error!("Modules are currently not supported. At line {}.", path[0].line);
         } else {
@@ -1081,18 +1301,22 @@ impl SemanticAnalyzer {
         self.context().declare_name(name, value);
     }
 
-    fn resolve_iterator_kind(&mut self, iterator: Expression) -> TypeDecl {
+    fn resolve_iterator_kind(&mut self, iterator: Expression) -> TypeDescriptor {
         let expr_kind = self.resolve_expr_type(iterator.clone());
 
         match iterator {
             Expression::List(elements) => self.resolve_list_type(&elements),
+            Expression::Call(callee, paren, args) => {
+                self.analyze_call_expression(callee.clone(), paren.clone(), args.clone());
+                self.resolve_function_return_type(callee, paren, args)
+            }
             _ => {
                 gpp_error!("Expect list, but got {:?}.", iterator);
             }
         }
     }
 
-    fn get_by_archetype(&mut self, sets: &[Archetype]) -> Option<TypeDecl> {
+    fn get_by_archetype(&mut self, sets: &[Archetype]) -> Option<TypeDescriptor> {
         let target_set: HashSet<_> = sets.iter().cloned().collect();
 
         match self.symbol_table.names.iter().find(|decl| decl.1.kind.archetypes == target_set) {
@@ -1106,7 +1330,7 @@ impl SemanticAnalyzer {
         self.assert_expression_kind(right, self.get_static_kind("bool"), op.clone());
     }
 
-    fn resolve_type_composition(&mut self, mask: Vec<Token>) -> TypeDecl {
+    fn resolve_type_composition(&mut self, mask: Vec<Token>) -> TypeDescriptor {
         let mut archetypes = HashSet::<Archetype>::new();
 
         archetypes.insert(Archetype::new("object".to_string()));
@@ -1128,5 +1352,134 @@ impl SemanticAnalyzer {
             None => gpp_error!("Cannot find type to match with specified archetype."),
             Some(kind) => kind,
         }
+    }
+
+    fn analyze_return(&mut self, value: Expression) {
+        self.require_depth(
+            Ordering::Greater,
+            0,
+            "Return statement are only allowed inside functions.".to_string()
+        );
+
+        if self.current_symbol_kind != SymbolKind::Function {
+            gpp_error!("Returns is only allowed inside functions.");
+        }
+
+        let function = self.current_symbol.clone();
+        let return_kind = self.get_function(&function).unwrap().clone();
+
+        self.analyze_expr(value.clone());
+
+        self.assert_archetype_kind(
+            value,
+            return_kind.return_kind.clone(),
+            format!("Return of '{}' does not match with function signature.", function.clone())
+        );
+    }
+
+    fn assert_kind_equals(&self, source: TypeDescriptor, target: TypeDescriptor, msg: String) {
+        for i in target.archetypes {
+            if !source.archetypes.contains(&i) {
+                gpp_error!("{}", msg);
+            }
+        }
+    }
+
+    fn resolve_get_expr(&mut self, expression: Box<Expression>, token: Token) -> TypeDescriptor {
+        let mut current_kind: Option<TypeDescriptor> = None;
+        let mut current_expression = *expression.clone();
+        let mut is_literal = false;
+
+        let mut path = vec![token.clone()];
+
+        while let Expression::Get(expr, name) = current_expression {
+            path.push(name.clone());
+            current_expression = *expr.clone();
+        }
+
+        if let Expression::Variable(name) = current_expression {
+            path.push(name);
+        } else {
+            current_kind = Some(self.resolve_expr_type(current_expression).clone());
+            is_literal = true;
+        }
+
+        let path: Vec<&Token> = path.iter().rev().collect();
+
+        if is_literal {
+            for (index, field) in path[0..].iter().enumerate() {
+                current_kind = match &current_kind {
+                    None => {
+                        gpp_error!(
+                            "{} cannot have '{}' field.",
+                            path[index - 1],
+                            field.lexeme.clone()
+                        );
+                    }
+
+                    Some(type_descriptor) => {
+                        match type_descriptor.fields.get(&field.lexeme) {
+                            None => {
+                                gpp_error!(
+                                    "Variable '{}' is a '{}' instance and not have '{}' field.",
+                                    path[index].lexeme.clone(),
+                                    current_kind.unwrap().name,
+                                    field.lexeme.clone()
+                                );
+                            }
+                            Some(field_decl) => { Some(field_decl.kind.clone()) }
+                        }
+                    }
+                };
+            }
+        } else {
+            current_kind = match self.get_name_in_depth(&path[0]) {
+                None => {
+                    gpp_error!("The kind of {} is not known here.", &path[0].lexeme);
+                }
+                Some(semantic_value) => semantic_value.kind,
+            };
+
+            for (index, field) in path[1..].iter().enumerate() {
+                current_kind = match &current_kind {
+                    None => {
+                        gpp_error!(
+                            "{} cannot have '{}' field.",
+                            path[index - 1],
+                            field.lexeme.clone()
+                        );
+                    }
+
+                    Some(type_descriptor) => {
+                        match type_descriptor.fields.get(&field.lexeme) {
+                            None => {
+                                gpp_error!(
+                                    "Variable '{}' is a '{}' instance and not have '{}' field.",
+                                    path[index].lexeme.clone(),
+                                    current_kind.unwrap().name,
+                                    field.lexeme.clone()
+                                );
+                            }
+                            Some(field_decl) => { Some(field_decl.kind.clone()) }
+                        }
+                    }
+                };
+            }
+        }
+
+        match &current_kind {
+            None => gpp_error!("Not have field with name."),
+            Some(kind) => self.get_static_kind(&kind.name),
+        }
+    }
+
+    fn analyze_get_expr(&self, expression: Box<Expression>, token: Token) {}
+
+    fn get_user_defined_kind(&self, name: String) -> TypeDescriptor {
+        self.symbol_table.names.get(&name).unwrap().kind.clone()
+    }
+
+    fn check_type_exists(&self, name: &String) -> bool {
+        self.symbol_table.names.contains_key(name)
     }
 }

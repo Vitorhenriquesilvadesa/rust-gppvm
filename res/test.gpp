@@ -1,18 +1,24 @@
-def some_function(myList: number, someArg: iterator) -> bool {
-
-    let a = [1, 2, 3];
-    let b = [1, 2, 3];
-    let y = [a, b];
-    let z = [1.0, 2, true, 'hello'];
-
-    if 'str' == 'str' {
-
-    }
+type Vec3 {
+    x: float,
+    y: float,
+    z: float,
 }
 
-type Point {
+type Ray {
+    origin: Vec3,
+    direction: Vec3,
+}
+
+def dot(a: Vec3, b: Vec3) -> float {
+    let myList = 'Hello'.length;
+
+    return a.x * b.x + a.y * b.y + a.z * a.z;
 }
 
 def main() -> int {
-    some_function(2.0, [1, 2, 3]);
+    let a;
+    let b = Vec3(0.0, 1.0, 0.0);
+
+    a = Vec3(0.0, 0.0, 1.0);
+
 }

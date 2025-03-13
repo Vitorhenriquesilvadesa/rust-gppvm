@@ -1,6 +1,6 @@
-use std::{env, process};
+use std::{ env, process };
 
-use gppvm::command::{self, CommandlineArguments};
+use gppvm::command::{ self, CommandlineArguments };
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
@@ -11,6 +11,6 @@ fn main() {
 
     if let Err(msg) = result {
         println!("{msg}");
-        process::exit(0);
+        process::exit(1);
     }
 }

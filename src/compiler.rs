@@ -5,19 +5,18 @@ mod instructions;
 mod lexer;
 mod parser;
 mod semantics;
+mod ir_generator;
 
+use ir_generator::IRGenerator;
 use semantics::SemanticAnalyzer;
 
 use std::time::Instant;
-use std::{env, fs};
-use std::{
-    error::Error,
-    io::{self, Read},
-};
+use std::{ env, fs };
+use std::{ error::Error, io::{ self, Read } };
 
 use crate::read_file_without_bom;
 
-use self::{lexer::Lexer, parser::Parser};
+use self::{ lexer::Lexer, parser::Parser };
 
 pub struct CompilerArguments {
     args: Vec<String>,
@@ -32,7 +31,8 @@ impl CompilerArguments {
 pub fn run(config: CompilerArguments) -> Result<(), String> {
     let path = format!(
         "{}\\{}",
-        env::current_dir()
+        env
+            ::current_dir()
             .map_err(|e| e.to_string())?
             .to_str()
             .unwrap_or(""),
@@ -62,6 +62,7 @@ pub struct Compiler {
     lexer: lexer::Lexer,
     parser: parser::Parser,
     semantic_analyzer: semantics::SemanticAnalyzer,
+    ir_generator: IRGenerator,
 }
 
 impl Compiler {
@@ -70,6 +71,7 @@ impl Compiler {
             lexer: Lexer::without_source(),
             parser: Parser::new(),
             semantic_analyzer: SemanticAnalyzer::new(),
+            ir_generator: IRGenerator::new(),
         }
     }
 
@@ -78,6 +80,7 @@ impl Compiler {
 
         let tokens = self.lexer.scan_tokens();
         let stmts = self.parser.parse(tokens.clone());
-        let intermediate_repr = self.semantic_analyzer.analyze(stmts.clone());
+        let semantic_code = self.semantic_analyzer.analyze(stmts.clone());
+        let ir_code = self.ir_generator.generate(&semantic_code);
     }
 }

@@ -50,12 +50,13 @@ pub enum Statement {
     Match,
     Scope(Vec<Box<Statement>>),
     Import(Token),
+    Return(Expression),
     // endregion:  --- Statements
 
     // region:  --- Declarations
     Decorator(Token, Vec<Expression>),
     Type(Token, Vec<FieldDeclaration>),
-    Function(Token, Vec<FieldDeclaration>, Box<Statement>, Token),
+    Function(Token, Vec<FieldDeclaration>, Box<Statement>, Expression),
     Global,
     Variable(Token, Option<Expression>),
     // endregion:  --- Statements
@@ -96,7 +97,7 @@ impl Display for Expression {
             }
             Expression::Assign(var, expr) => write!(f, "({} = {})", var, expr),
             Expression::Lambda => write!(f, "(lambda)"),
-            Expression::Get(object, field) => write!(f, "({}.{})", object, field),
+            Expression::Get(object, field) => write!(f, "Get({}.{})", object, field),
             Expression::Set(object, field, value) => {
                 write!(f, "Set({}.{} = {})", object, field, value)
             }
@@ -145,6 +146,7 @@ impl Parser {
         match self.advance().kind {
             TokenKind::Keyword(keyword) =>
                 match keyword {
+                    KeywordKind::Return => self.return_statement(),
                     KeywordKind::Type => self.type_declaration(),
                     KeywordKind::Def => self.function_declaration(),
                     _ => {
@@ -268,19 +270,13 @@ impl Parser {
             String::from("Expect ')' after function params.")
         );
 
-        let mut return_kind: Token = Token::new(
-            TokenKind::Identifier,
-            "void".to_string(),
-            self.previous().line,
-            self.previous().column
-        );
+        let mut return_kind: Expression;
 
-        if self.try_eat(&[TokenKind::Operator(OperatorKind::Arrow)]) {
-            return_kind = self.eat(
-                TokenKind::Identifier,
-                "Expect return kind after function params.".to_string()
-            );
-        }
+        self.eat(
+            TokenKind::Operator(OperatorKind::Arrow),
+            format!("Expect function return kind. At line {}", self.previous().line)
+        );
+        return_kind = self.type_composition();
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
@@ -708,6 +704,30 @@ impl Parser {
         Expression::Call(Box::new(callee), paren, arguments)
     }
 
+    fn literal_get(&mut self, target: Expression) -> Expression {
+        let mut expr = target;
+
+        expr = Expression::Get(
+            Box::new(expr),
+            self.eat(
+                TokenKind::Identifier,
+                format!("Expect field name after '.'. At line {}.", self.peek().line)
+            )
+        );
+
+        while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
+            expr = Expression::Get(
+                Box::new(expr),
+                self.eat(
+                    TokenKind::Identifier,
+                    format!("Expect field name after '.'. At line {}.", self.peek().line)
+                )
+            );
+        }
+
+        expr
+    }
+
     fn literal(&mut self) -> Expression {
         if
             self.try_eat(
@@ -719,11 +739,23 @@ impl Parser {
                 ]
             )
         {
-            return Expression::Literal(self.previous());
+            let expr = Expression::Literal(self.previous());
+
+            if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
+                return self.literal_get(expr);
+            } else {
+                return expr;
+            }
         }
 
         if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftParen)]) {
-            return self.group();
+            let expr = self.group();
+
+            if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
+                return self.literal_get(expr);
+            } else {
+                return expr;
+            }
         }
 
         if self.try_eat(&[TokenKind::Identifier]) {
@@ -842,5 +874,15 @@ impl Parser {
 
     fn backtrack(&mut self) {
         self.current -= 1;
+    }
+
+    fn return_statement(&mut self) -> Statement {
+        let value = Statement::Return(self.expression());
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::SemiColon),
+            "Expect ';' after return value.".to_string()
+        );
+
+        value
     }
 }

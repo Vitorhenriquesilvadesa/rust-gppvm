@@ -1,4 +1,7 @@
-use super::{ parser::FieldDeclaration, semantics::{ SemanticCode, SymbolTable } };
+use super::{
+    parser::FieldDeclaration,
+    semantics::{SemanticCode, SymbolTable},
+};
 
 pub struct IRGenerator {
     semantic_code: SemanticCode,
@@ -6,7 +9,9 @@ pub struct IRGenerator {
 
 impl IRGenerator {
     pub fn new() -> Self {
-        Self { semantic_code: SemanticCode::new(SymbolTable::new(), Vec::new()) }
+        Self {
+            semantic_code: SemanticCode::new(SymbolTable::new(), Vec::new()),
+        }
     }
 
     pub fn generate(&mut self, semantic_code: &SemanticCode) -> IntermediateCode {

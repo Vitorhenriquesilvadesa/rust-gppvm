@@ -1,4 +1,9 @@
-use std::{ collections::HashMap, error::Error, fmt::{ self, Display }, ops::Add };
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{self, Display},
+    ops::Add,
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -58,6 +63,7 @@ pub enum KeywordKind {
     And,
     Let,
     In,
+    With,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -126,12 +132,18 @@ pub struct Lexer {
 pub fn create_keywords() -> HashMap<String, TokenKind> {
     let mut keywords = HashMap::new();
     keywords.insert("def".to_string(), TokenKind::Keyword(KeywordKind::Def));
-    keywords.insert("global".to_string(), TokenKind::Keyword(KeywordKind::Global));
+    keywords.insert(
+        "global".to_string(),
+        TokenKind::Keyword(KeywordKind::Global),
+    );
     keywords.insert("let".to_string(), TokenKind::Keyword(KeywordKind::Let));
     keywords.insert("true".to_string(), TokenKind::Literal(Literal::Boolean));
     keywords.insert("false".to_string(), TokenKind::Literal(Literal::Boolean));
     keywords.insert("type".to_string(), TokenKind::Keyword(KeywordKind::Type));
-    keywords.insert("import".to_string(), TokenKind::Keyword(KeywordKind::Import));
+    keywords.insert(
+        "import".to_string(),
+        TokenKind::Keyword(KeywordKind::Import),
+    );
     keywords.insert("not".to_string(), TokenKind::Operator(OperatorKind::Not));
     keywords.insert("and".to_string(), TokenKind::Operator(OperatorKind::And));
     keywords.insert("or".to_string(), TokenKind::Operator(OperatorKind::Or));
@@ -142,7 +154,11 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert("while".to_string(), TokenKind::Keyword(KeywordKind::While));
     keywords.insert("for".to_string(), TokenKind::Keyword(KeywordKind::For));
     keywords.insert("in".to_string(), TokenKind::Keyword(KeywordKind::In));
-    keywords.insert("return".to_string(), TokenKind::Keyword(KeywordKind::Return));
+    keywords.insert("with".to_string(), TokenKind::Keyword(KeywordKind::With));
+    keywords.insert(
+        "return".to_string(),
+        TokenKind::Keyword(KeywordKind::Return),
+    );
 
     keywords
 }
@@ -241,7 +257,13 @@ impl Lexer {
             }
             '|' => self.make_token(TokenKind::Operator(OperatorKind::BitwiseOr)),
             '&' => self.make_token(TokenKind::Operator(OperatorKind::BitwiseAnd)),
-            '/' => self.make_token(TokenKind::Punctuation(PunctuationKind::Slash)),
+            '/' => {
+                if self.try_eat('/') {
+                    self.comment();
+                } else {
+                    self.make_token(TokenKind::Punctuation(PunctuationKind::Slash))
+                }
+            }
             ',' => self.make_token(TokenKind::Punctuation(PunctuationKind::Comma)),
             ':' => self.make_token(TokenKind::Punctuation(PunctuationKind::Colon)),
             ';' => self.make_token(TokenKind::Punctuation(PunctuationKind::SemiColon)),
@@ -270,22 +292,21 @@ impl Lexer {
             '\'' => self.string('\'').expect("Error in string."),
             '.' => self.make_token(TokenKind::Punctuation(PunctuationKind::Dot)),
 
-            _ =>
-                match c {
-                    '_' => {
-                        if self.is_alpha_numeric(self.peek_next()) {
-                            self.identifier().expect("Error in identifier.");
-                        } else {
-                            self.make_token(TokenKind::Underscore);
-                        }
-                    }
-                    _ if self.is_digit(c) => self.number(),
-                    _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
-                    _ => {
-                        dbg!(&c);
-                        panic!("Invalid character '{}' at line {}", c, self.line);
+            _ => match c {
+                '_' => {
+                    if self.is_alpha_numeric(self.peek_next()) {
+                        self.identifier().expect("Error in identifier.");
+                    } else {
+                        self.make_token(TokenKind::Underscore);
                     }
                 }
+                _ if self.is_digit(c) => self.number(),
+                _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
+                _ => {
+                    dbg!(&c);
+                    panic!("Invalid character '{}' at line {}", c, self.line);
+                }
+            },
         }
     }
 
@@ -297,8 +318,14 @@ impl Lexer {
             self.advance();
         }
 
-        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
-        let kind = self.keywords.get(&lexeme).cloned().unwrap_or(TokenKind::Identifier);
+        let lexeme: String = self.source[self.start..self.start + self.length]
+            .iter()
+            .collect();
+        let kind = self
+            .keywords
+            .get(&lexeme)
+            .cloned()
+            .unwrap_or(TokenKind::Identifier);
 
         self.make_token_with_lexeme(kind, lexeme);
         Ok(())
@@ -321,7 +348,9 @@ impl Lexer {
             is_float = true;
         }
 
-        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
+        let lexeme: String = self.source[self.start..self.start + self.length]
+            .iter()
+            .collect();
 
         if is_float {
             self.make_token_with_lexeme(TokenKind::Literal(Literal::Float), lexeme);
@@ -373,7 +402,9 @@ impl Lexer {
     }
 
     fn make_token(&mut self, kind: TokenKind) {
-        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
+        let lexeme: String = self.source[self.start..self.start + self.length]
+            .iter()
+            .collect();
         self.make_token_with_lexeme(kind, lexeme);
     }
 
@@ -430,5 +461,11 @@ impl Lexer {
 
     fn is_at_end(&self) -> bool {
         return self.start + self.length >= self.source.len();
+    }
+
+    fn comment(&mut self) {
+        while !(self.try_eat('\n') || self.is_at_end()) {
+            self.advance();
+        }
     }
 }

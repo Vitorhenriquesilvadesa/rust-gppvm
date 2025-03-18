@@ -3,15 +3,16 @@
 use crate::gpp_error;
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{ HashMap, HashSet },
     env,
-    fmt::{write, Display},
-    process, string,
+    fmt::{ write, Display },
+    process,
+    string,
 };
 
 use super::{
-    lexer::{Literal, OperatorKind, PunctuationKind, Token, TokenKind},
-    parser::{Expression, FieldDeclaration, Statement},
+    lexer::{ Literal, OperatorKind, PunctuationKind, Token, TokenKind },
+    parser::{ Expression, FieldDeclaration, Statement },
 };
 
 #[derive(Debug, Clone)]
@@ -49,35 +50,19 @@ impl Value {
     }
 
     pub fn as_int(&self) -> Option<i32> {
-        if let Value::Int(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
+        if let Value::Int(v) = self { Some(*v) } else { None }
     }
 
     pub fn as_float(&self) -> Option<f32> {
-        if let Value::Float(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
+        if let Value::Float(v) = self { Some(*v) } else { None }
     }
 
     pub fn as_boolean(&self) -> Option<bool> {
-        if let Value::Boolean(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
+        if let Value::Boolean(v) = self { Some(*v) } else { None }
     }
 
     pub fn as_object(&self) -> Option<ObjectDescriptor> {
-        if let Value::Object(v) = self {
-            Some(v.clone())
-        } else {
-            None
-        }
+        if let Value::Object(v) = self { Some(v.clone()) } else { None }
     }
 }
 
@@ -123,7 +108,7 @@ impl TypeDescriptor {
         name: String,
         archetypes: HashSet<Archetype>,
         fields: HashMap<String, FieldDescriptor>,
-        id: u32,
+        id: u32
     ) -> Self {
         Self {
             name,
@@ -144,7 +129,7 @@ impl TypeDescriptor {
 
     pub fn from_type_decl_with_fields(
         decl: TypeDecl,
-        fields: HashMap<String, FieldDescriptor>,
+        fields: HashMap<String, FieldDescriptor>
     ) -> Self {
         Self {
             archetypes: decl.archetypes,
@@ -226,11 +211,7 @@ impl ContextScope {
     }
 
     fn name(&self, name: &String) -> Option<SemanticValue> {
-        if self.contains_name(name) {
-            Some(self.names.get(name).unwrap().clone())
-        } else {
-            None
-        }
+        if self.contains_name(name) { Some(self.names.get(name).unwrap().clone()) } else { None }
     }
 
     fn set_infered_kind(&mut self, name: &String, kind: TypeDescriptor) {
@@ -303,7 +284,7 @@ impl FunctionPrototype {
         name: String,
         params: Vec<FieldDeclaration>,
         arity: usize,
-        return_kind: TypeDescriptor,
+        return_kind: TypeDescriptor
     ) -> Self {
         Self {
             name,
@@ -312,6 +293,34 @@ impl FunctionPrototype {
             return_kind,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum AnnotatedExpression {}
+
+#[derive(Debug, Clone)]
+pub enum AnnotatedStatement {
+    // region:  --- Statements
+    If(Token, AnnotatedExpression, Box<AnnotatedStatement>, Option<Box<AnnotatedStatement>>),
+    While(AnnotatedExpression, Box<AnnotatedStatement>),
+    ForEach(Token, AnnotatedExpression, Box<AnnotatedStatement>),
+    Expression(AnnotatedExpression),
+    Match,
+    Scope(Vec<Box<AnnotatedStatement>>),
+    Import(Token),
+    Return(AnnotatedExpression, FunctionPrototype),
+    // endregion:  --- Statements
+
+    // region:  --- Declarations
+    Decorator(Token, Vec<AnnotatedExpression>),
+    Type(Token, Vec<Token>, Vec<FieldDeclaration>),
+    Function(Token, Vec<FieldDeclaration>, Box<AnnotatedStatement>, AnnotatedExpression),
+    Global,
+    Variable(Token, Option<AnnotatedExpression>),
+    // endregion:  --- Statements
+
+    // region:  --- For Compiler
+    EndCode, // endregion:  --- For Compiler
 }
 
 impl std::hash::Hash for FunctionPrototype {
@@ -354,11 +363,11 @@ impl SymbolTable {
 #[derive(Debug, Clone)]
 pub struct SemanticCode {
     table: SymbolTable,
-    statements: Vec<Statement>,
+    statements: Vec<AnnotatedStatement>,
 }
 
 impl SemanticCode {
-    pub fn new(table: SymbolTable, statements: Vec<Statement>) -> Self {
+    pub fn new(table: SymbolTable, statements: Vec<AnnotatedStatement>) -> Self {
         SemanticCode { table, statements }
     }
 
@@ -416,19 +425,15 @@ impl SemanticAnalyzer {
         &mut self,
         name: &str,
         target_descriptor: &TypeDescriptor,
-        field_descriptor: &TypeDescriptor,
+        field_descriptor: &TypeDescriptor
     ) {
-        let fields = &mut self
-            .symbol_table
-            .names
+        let fields = &mut self.symbol_table.names
             .get_mut(&target_descriptor.name)
-            .unwrap()
-            .kind
-            .fields;
+            .unwrap().kind.fields;
 
         fields.insert(
             name.to_string(),
-            FieldDescriptor::new(field_descriptor.name.clone(), field_descriptor.clone()),
+            FieldDescriptor::new(field_descriptor.name.clone(), field_descriptor.clone())
         );
     }
 
@@ -451,9 +456,7 @@ impl SemanticAnalyzer {
             let kind = self.get_static_kind(&archetype_name);
 
             for (name, field_descriptor) in &kind.fields {
-                type_descriptor
-                    .fields
-                    .insert(name.clone(), field_descriptor.clone());
+                type_descriptor.fields.insert(name.clone(), field_descriptor.clone());
             }
         }
 
@@ -470,9 +473,11 @@ impl SemanticAnalyzer {
 
         let mut stmt: Statement;
 
+        let mut annotated_stmts: Vec<AnnotatedStatement> = Vec::new();
+
         while !self.is_at_end() {
             stmt = self.current().unwrap().clone();
-            self.analyze_stmt(stmt);
+            annotated_stmts.push(self.analyze_stmt(stmt));
             self.advance();
         }
 
@@ -480,13 +485,13 @@ impl SemanticAnalyzer {
             gpp_error!("Missing 'main' function.");
         }
 
-        SemanticCode::new(self.symbol_table.clone(), self.statements.clone())
+        SemanticCode::new(self.symbol_table.clone(), annotated_stmts)
     }
 
-    fn analyze_stmt(&mut self, stmt: Statement) {
+    fn analyze_stmt(&mut self, stmt: Statement) -> AnnotatedStatement {
         match stmt {
             Statement::Return(value) => self.analyze_return(value),
-            Statement::Expression(expr) => self.analyze_expr(expr.clone()),
+            Statement::Expression(expr) => self.analyze_expr_stmt(expr.clone()),
             Statement::Decorator(hash_token, attribs) => {
                 self.analyze_decorator(hash_token, attribs.clone())
             }
@@ -515,7 +520,7 @@ impl SemanticAnalyzer {
                 self.assert_archetype_kind(
                     condition,
                     self.get_static_kind("iterator"),
-                    "Expect iterator in 'for' loop.".to_string(),
+                    "Expect iterator in 'for' loop.".to_string()
                 );
             }
 
@@ -524,7 +529,7 @@ impl SemanticAnalyzer {
                 self.assert_kind_equals(
                     kind,
                     self.get_static_kind("iterator"),
-                    "Expect iterator in for each declaration.".to_string(),
+                    "Expect iterator in for each declaration.".to_string()
                 );
             }
 
@@ -583,18 +588,11 @@ impl SemanticAnalyzer {
         self.require_depth(
             Ordering::Less,
             1,
-            format!(
-                "Type declarations are only allowed in top level code. At line {}.",
-                name.line
-            ),
+            format!("Type declarations are only allowed in top level code. At line {}.", name.line)
         );
 
         if let Some(kind) = self.symbol_table.names.get(&name.lexeme) {
-            gpp_error!(
-                "Duplicated type definition for '{}'. At line {}.",
-                name.lexeme,
-                name.line
-            );
+            gpp_error!("Duplicated type definition for '{}'. At line {}.", name.lexeme, name.line);
         }
 
         self.current_symbol_kind = SymbolKind::Kind;
@@ -632,7 +630,7 @@ impl SemanticAnalyzer {
 
                 type_fields.insert(
                     field.name.lexeme.clone(),
-                    FieldDescriptor::new(field.name.lexeme.clone(), kind.clone()),
+                    FieldDescriptor::new(field.name.lexeme.clone(), kind.clone())
                 );
             }
         }
@@ -645,7 +643,7 @@ impl SemanticAnalyzer {
             name.lexeme.clone(),
             fields.clone(),
             type_fields.len(),
-            self.get_user_defined_kind(name.lexeme.clone()),
+            self.get_user_defined_kind(name.lexeme.clone())
         );
 
         self.define_function(name.lexeme.clone(), constructor);
@@ -654,7 +652,7 @@ impl SemanticAnalyzer {
     fn define_type(&mut self, descriptor: TypeDescriptor) {
         self.symbol_table.define(
             descriptor.name.clone(),
-            StaticValue::new(descriptor, Value::Internal),
+            StaticValue::new(descriptor, Value::Internal)
         );
     }
 
@@ -663,15 +661,12 @@ impl SemanticAnalyzer {
         name: Token,
         params: Vec<FieldDeclaration>,
         body: Statement,
-        return_kind: Expression,
+        return_kind: Expression
     ) {
         self.require_depth(
             Ordering::Less,
             1,
-            format!(
-                "Functions are only allowed in top level code. At line {}.",
-                name.line
-            ),
+            format!("Functions are only allowed in top level code. At line {}.", name.line)
         );
 
         self.current_symbol_kind = SymbolKind::Function;
@@ -688,7 +683,7 @@ impl SemanticAnalyzer {
             name.lexeme.clone(),
             params.clone(),
             params.len(),
-            kind.clone(),
+            kind.clone()
         );
 
         self.define_function(name.lexeme.clone(), function_definition.clone());
@@ -701,7 +696,7 @@ impl SemanticAnalyzer {
             let kind = self.resolve_expr_type(arg.kind);
             self.define_local(
                 arg.name.lexeme.clone(),
-                SemanticValue::new(Some(kind), Value::Internal, arg.name.line),
+                SemanticValue::new(Some(kind), Value::Internal, arg.name.line)
             );
         }
 
@@ -752,7 +747,7 @@ impl SemanticAnalyzer {
         keyword: Token,
         condition: Expression,
         body: Box<Statement>,
-        else_branch: Option<Box<Statement>>,
+        else_branch: Option<Box<Statement>>
     ) {
         self.analyze_expr(condition.clone());
         self.assert_expression_kind(condition.clone(), self.get_static_kind("bool"), keyword);
@@ -771,24 +766,25 @@ impl SemanticAnalyzer {
         self.end_scope();
 
         match else_branch {
-            Some(stmt) => match *stmt {
-                Statement::Scope(stmts) => {
-                    self.begin_scope();
+            Some(stmt) =>
+                match *stmt {
+                    Statement::Scope(stmts) => {
+                        self.begin_scope();
 
-                    for stmt in stmts {
-                        self.analyze_stmt(*stmt);
+                        for stmt in stmts {
+                            self.analyze_stmt(*stmt);
+                        }
+
+                        self.end_scope();
                     }
-
-                    self.end_scope();
+                    _ => gpp_error!("Statement {:?} is not allowed here.", stmt),
                 }
-                _ => gpp_error!("Statement {:?} is not allowed here.", stmt),
-            },
 
             None => {}
         }
     }
 
-    fn analyze_expr(&mut self, expr: Expression) {
+    fn analyze_expr(&mut self, expr: Expression) -> AnnotatedExpression {
         match expr.clone() {
             Expression::Void => {}
             Expression::Literal(token) => self.analyze_literal(token),
@@ -826,10 +822,11 @@ impl SemanticAnalyzer {
     fn is_at_end(&self) -> bool {
         match self.current() {
             None => true,
-            Some(stmt) => match stmt {
-                Statement::EndCode => true,
-                _ => false,
-            },
+            Some(stmt) =>
+                match stmt {
+                    Statement::EndCode => true,
+                    _ => false,
+                }
         }
     }
 
@@ -862,30 +859,31 @@ impl SemanticAnalyzer {
 
     fn check_operation_valid(&mut self, token: Token, expression: Box<Expression>) {
         match token.kind {
-            TokenKind::Operator(op) => match op {
-                OperatorKind::Minus => {
-                    let expr_type = self.resolve_expr_type(*expression.clone());
+            TokenKind::Operator(op) =>
+                match op {
+                    OperatorKind::Minus => {
+                        let expr_type = self.resolve_expr_type(*expression.clone());
 
-                    self.assert_archetype_kind(
-                        *expression.clone(),
-                        self.get_static_kind("number"),
-                        "'-' operator only be applyed in numbers.".to_string(),
-                    );
-                }
-
-                OperatorKind::Not => {
-                    let expr_type = self.resolve_expr_type(*expression.clone());
-
-                    if expr_type.id != self.get_static_kind_id("bool") {
-                        gpp_error!(
-                            "Cannot apply 'not' operator in a '{}' instance. At line {}.",
-                            expr_type.name,
-                            token.line
+                        self.assert_archetype_kind(
+                            *expression.clone(),
+                            self.get_static_kind("number"),
+                            "'-' operator only be applyed in numbers.".to_string()
                         );
                     }
+
+                    OperatorKind::Not => {
+                        let expr_type = self.resolve_expr_type(*expression.clone());
+
+                        if expr_type.id != self.get_static_kind_id("bool") {
+                            gpp_error!(
+                                "Cannot apply 'not' operator in a '{}' instance. At line {}.",
+                                expr_type.name,
+                                token.line
+                            );
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
 
             _ => gpp_error!("Invalid unary operation at line {}.", token.line),
         }
@@ -894,28 +892,30 @@ impl SemanticAnalyzer {
     fn resolve_expr_type(&mut self, expression: Expression) -> TypeDescriptor {
         match expression {
             Expression::List(elements) => self.get_static_kind("list"),
-            Expression::Literal(token) => match token.kind {
-                TokenKind::Identifier => self.resolve_identifier_type(token),
-                TokenKind::Literal(literal) => match literal {
-                    Literal::String => self.get_symbol("str").unwrap().kind.clone(),
-                    Literal::Float => self.get_symbol("float").unwrap().kind.clone(),
-                    Literal::Int => self.get_symbol("int").unwrap().kind.clone(),
-                    Literal::Boolean => self.get_symbol("bool").unwrap().kind.clone(),
-                },
-                _ => gpp_error!("Expect literal in line {}.", token.line),
-            },
+            Expression::Literal(token) =>
+                match token.kind {
+                    TokenKind::Identifier => self.resolve_identifier_type(token),
+                    TokenKind::Literal(literal) =>
+                        match literal {
+                            Literal::String => self.get_symbol("str").unwrap().kind.clone(),
+                            Literal::Float => self.get_symbol("float").unwrap().kind.clone(),
+                            Literal::Int => self.get_symbol("int").unwrap().kind.clone(),
+                            Literal::Boolean => self.get_symbol("bool").unwrap().kind.clone(),
+                        }
+                    _ => gpp_error!("Expect literal in line {}.", token.line),
+                }
             Expression::Unary(_, expression) => self.resolve_expr_type(*expression),
             Expression::Arithmetic(left, op, right) => {
                 if let TokenKind::Operator(operator) = op.kind {
                     match operator {
-                        OperatorKind::Plus
+                        | OperatorKind::Plus
                         | OperatorKind::Minus
                         | OperatorKind::Star
                         | OperatorKind::Slash => {
                             return self.resolve_expr_type(*left);
                         }
 
-                        OperatorKind::Greater
+                        | OperatorKind::Greater
                         | OperatorKind::GreaterEqual
                         | OperatorKind::Less
                         | OperatorKind::LessEqual
@@ -949,9 +949,7 @@ impl SemanticAnalyzer {
             }
             Expression::Variable(name) => self.resolve_identifier_type(name),
             Expression::Assign(_, expr) => self.resolve_expr_type(*expr),
-            Expression::Lambda => {
-                gpp_error!("Lambda expressions are currently not supported.")
-            }
+            Expression::Lambda => { gpp_error!("Lambda expressions are currently not supported.") }
             Expression::TypeComposition(mask) => self.resolve_type_composition(mask),
             Expression::Call(callee, paren, args) => {
                 self.resolve_function_return_type(callee, paren, args)
@@ -977,23 +975,25 @@ impl SemanticAnalyzer {
             format!(
                 "Get identifier value is only allowed inside functions. At line {}.",
                 token.line
-            ),
+            )
         );
 
         let mut i = self.context_stack.len() - 1;
 
         loop {
             match self.context_stack.get(i).name(&token.lexeme) {
-                Some(symbol) => match symbol.kind {
-                    Some(kind) => {
-                        return kind;
+                Some(symbol) =>
+                    match symbol.kind {
+                        Some(kind) => {
+                            return kind;
+                        }
+                        None =>
+                            gpp_error!(
+                                "The kind of '{}' are not known here. At line {}.",
+                                token.lexeme,
+                                token.line
+                            ),
                     }
-                    None => gpp_error!(
-                        "The kind of '{}' are not known here. At line {}.",
-                        token.lexeme,
-                        token.line
-                    ),
-                },
                 None => {
                     i -= 1;
                     continue;
@@ -1001,11 +1001,7 @@ impl SemanticAnalyzer {
             }
         }
 
-        gpp_error!(
-            "The name '{}' are not declared here. At line {}.",
-            token.lexeme,
-            token.line
-        );
+        gpp_error!("The name '{}' are not declared here. At line {}.", token.lexeme, token.line);
     }
 
     fn get_name_in_depth(&mut self, name: &Token) -> Option<SemanticValue> {
@@ -1026,11 +1022,7 @@ impl SemanticAnalyzer {
             }
         }
 
-        gpp_error!(
-            "The name '{}' are not declared here. At line {}.",
-            name.lexeme,
-            name.line
-        );
+        gpp_error!("The name '{}' are not declared here. At line {}.", name.lexeme, name.line);
     }
 
     fn analyze_assignment_expr(&mut self, token: Token, expression: Box<Expression>) {
@@ -1067,7 +1059,7 @@ impl SemanticAnalyzer {
         &mut self,
         expr: Expression,
         expected_kind: TypeDescriptor,
-        location: Token,
+        location: Token
     ) {
         let expr_kind = self.resolve_expr_type(expr);
 
@@ -1093,7 +1085,7 @@ impl SemanticAnalyzer {
         &mut self,
         left: Box<Expression>,
         token: Token,
-        right: Box<Expression>,
+        right: Box<Expression>
     ) {
         if !matches!(*left.clone(), Expression::Literal(literal)) {
             self.analyze_expr(*left.clone());
@@ -1105,7 +1097,7 @@ impl SemanticAnalyzer {
 
         if let TokenKind::Operator(op) = token.kind {
             match op {
-                OperatorKind::Plus
+                | OperatorKind::Plus
                 | OperatorKind::Minus
                 | OperatorKind::Star
                 | OperatorKind::Slash
@@ -1118,19 +1110,22 @@ impl SemanticAnalyzer {
 
                     let msg = format!(
                         "Cannot apply arithmetic operation '{}' to '{}' and '{}'. At line {}.",
-                        token.lexeme, left_kind.name, right_kind.name, token.line
+                        token.lexeme,
+                        left_kind.name,
+                        right_kind.name,
+                        token.line
                     );
 
                     self.assert_archetype_kind(
                         *left.clone(),
                         self.get_static_kind("number"),
-                        msg.clone(),
+                        msg.clone()
                     );
 
                     self.assert_archetype_kind(
                         *right.clone(),
                         self.get_static_kind("number"),
-                        msg.clone(),
+                        msg.clone()
                     );
                 }
 
@@ -1139,11 +1134,12 @@ impl SemanticAnalyzer {
                     self.assert_expression_kind(*right.clone(), expected_kind, token.clone());
                 }
 
-                _ => gpp_error!(
-                    "Invalid arithmetic operator '{}'. At line {}.",
-                    token.lexeme,
-                    token.line
-                ),
+                _ =>
+                    gpp_error!(
+                        "Invalid arithmetic operator '{}'. At line {}.",
+                        token.lexeme,
+                        token.line
+                    ),
             }
         }
     }
@@ -1171,7 +1167,7 @@ impl SemanticAnalyzer {
         &mut self,
         expr: Expression,
         archetype_source: TypeDescriptor,
-        msg: String,
+        msg: String
     ) {
         let expr_kind = self.resolve_expr_type(expr);
 
@@ -1254,7 +1250,7 @@ impl SemanticAnalyzer {
         &mut self,
         callee: Box<Expression>,
         paren: Token,
-        args: Vec<Expression>,
+        args: Vec<Expression>
     ) {
         if let Expression::Variable(name) = *callee {
             if self.current_symbol.clone() == name.lexeme.clone() {
@@ -1278,10 +1274,11 @@ impl SemanticAnalyzer {
 
                     self.assert_function_args(prototype, args);
                 }
-                None => gpp_error!(
-                    "Function '{}' are not declared in this scope.",
-                    name.lexeme.clone()
-                ),
+                None =>
+                    gpp_error!(
+                        "Function '{}' are not declared in this scope.",
+                        name.lexeme.clone()
+                    ),
             }
         } else {
             gpp_error!("Call functions inside modules are currently not allowed.");
@@ -1296,7 +1293,7 @@ impl SemanticAnalyzer {
         &mut self,
         callee: Box<Expression>,
         paren: Token,
-        args: Vec<Expression>,
+        args: Vec<Expression>
     ) -> TypeDescriptor {
         if let Expression::Variable(name) = *callee {
             let function = self.symbol_table.get_function(&name.lexeme.clone());
@@ -1305,10 +1302,11 @@ impl SemanticAnalyzer {
                 Some(prototype) => {
                     return prototype.return_kind.clone();
                 }
-                None => gpp_error!(
-                    "Function '{}' are not declared in this scope.",
-                    name.lexeme.clone()
-                ),
+                None =>
+                    gpp_error!(
+                        "Function '{}' are not declared in this scope.",
+                        name.lexeme.clone()
+                    ),
             }
         } else {
             gpp_error!("Call functions inside modules are currently not allowed.");
@@ -1325,9 +1323,10 @@ impl SemanticAnalyzer {
                 proto_arg_kind.clone(),
                 format!(
                     "Expect '{}' to '{}' param, but got '{}'.",
-                    proto_arg_kind.name, prototype.params[index].name.lexeme, passed_arg_kind.name
-                )
-                .to_string(),
+                    proto_arg_kind.name,
+                    prototype.params[index].name.lexeme,
+                    passed_arg_kind.name
+                ).to_string()
             );
         }
     }
@@ -1338,10 +1337,7 @@ impl SemanticAnalyzer {
 
     fn resolve_type(&self, path: Vec<Token>) -> TypeDescriptor {
         if path.len() != 1 {
-            gpp_error!(
-                "Modules are currently not supported. At line {}.",
-                path[0].line
-            );
+            gpp_error!("Modules are currently not supported. At line {}.", path[0].line);
         } else {
             self.get_static_kind(&path.first().unwrap().lexeme)
         }
@@ -1369,12 +1365,7 @@ impl SemanticAnalyzer {
     fn get_by_archetype(&mut self, sets: &[Archetype]) -> Option<TypeDescriptor> {
         let target_set: HashSet<_> = sets.iter().cloned().collect();
 
-        match self
-            .symbol_table
-            .names
-            .iter()
-            .find(|decl| decl.1.kind.archetypes == target_set)
-        {
+        match self.symbol_table.names.iter().find(|decl| decl.1.kind.archetypes == target_set) {
             Some((name, value)) => Some(value.kind.clone()),
             None => None,
         }
@@ -1393,8 +1384,7 @@ impl SemanticAnalyzer {
         for name in &mask {
             let matched: Vec<Archetype> = self
                 .get_static_kind(&name.lexeme)
-                .archetypes
-                .into_iter()
+                .archetypes.into_iter()
                 .collect();
 
             for archetype in matched {
@@ -1410,11 +1400,11 @@ impl SemanticAnalyzer {
         }
     }
 
-    fn analyze_return(&mut self, value: Expression) {
+    fn analyze_return(&mut self, value: Expression) -> AnnotatedStatement {
         self.require_depth(
             Ordering::Greater,
             0,
-            "Return statement are only allowed inside functions.".to_string(),
+            "Return statement are only allowed inside functions.".to_string()
         );
 
         if self.current_symbol_kind != SymbolKind::Function {
@@ -1424,16 +1414,15 @@ impl SemanticAnalyzer {
         let function = self.current_symbol.clone();
         let return_kind = self.get_function(&function).unwrap().clone();
 
-        self.analyze_expr(value.clone());
+        let return_value = self.analyze_expr(value.clone());
 
         self.assert_archetype_kind(
             value,
             return_kind.return_kind.clone(),
-            format!(
-                "Return of '{}' does not match with function signature.",
-                function.clone()
-            ),
+            format!("Return of '{}' does not match with function signature.", function.clone())
         );
+
+        AnnotatedStatement::Return(return_value, return_kind)
     }
 
     fn assert_kind_equals(&self, source: TypeDescriptor, target: TypeDescriptor, msg: String) {
@@ -1476,17 +1465,18 @@ impl SemanticAnalyzer {
                         );
                     }
 
-                    Some(type_descriptor) => match type_descriptor.fields.get(&field.lexeme) {
-                        None => {
-                            gpp_error!(
-                                "Variable '{}' is a '{}' instance and not have '{}' field.",
-                                path[index].lexeme.clone(),
-                                current_kind.unwrap().name,
-                                field.lexeme.clone()
-                            );
+                    Some(type_descriptor) =>
+                        match type_descriptor.fields.get(&field.lexeme) {
+                            None => {
+                                gpp_error!(
+                                    "Variable '{}' is a '{}' instance and not have '{}' field.",
+                                    path[index].lexeme.clone(),
+                                    current_kind.unwrap().name,
+                                    field.lexeme.clone()
+                                );
+                            }
+                            Some(field_decl) => Some(field_decl.kind.clone()),
                         }
-                        Some(field_decl) => Some(field_decl.kind.clone()),
-                    },
                 };
             }
         } else {
@@ -1507,17 +1497,18 @@ impl SemanticAnalyzer {
                         );
                     }
 
-                    Some(type_descriptor) => match type_descriptor.fields.get(&field.lexeme) {
-                        None => {
-                            gpp_error!(
-                                "Variable '{}' is a '{}' instance and not have '{}' field.",
-                                path[index].lexeme.clone(),
-                                current_kind.unwrap().name,
-                                field.lexeme.clone()
-                            );
+                    Some(type_descriptor) =>
+                        match type_descriptor.fields.get(&field.lexeme) {
+                            None => {
+                                gpp_error!(
+                                    "Variable '{}' is a '{}' instance and not have '{}' field.",
+                                    path[index].lexeme.clone(),
+                                    current_kind.unwrap().name,
+                                    field.lexeme.clone()
+                                );
+                            }
+                            Some(field_decl) => Some(field_decl.kind.clone()),
                         }
-                        Some(field_decl) => Some(field_decl.kind.clone()),
-                    },
                 };
             }
         }
@@ -1536,5 +1527,10 @@ impl SemanticAnalyzer {
 
     fn check_type_exists(&self, name: &String) -> bool {
         self.symbol_table.names.contains_key(name)
+    }
+
+    fn analyze_expr_stmt(&mut self, expression: Expression) -> AnnotatedStatement {
+        let expr = self.analyze_expr(expression);
+        AnnotatedStatement::Expression(expr)
     }
 }

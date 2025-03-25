@@ -5,47 +5,10 @@ type Vec3 {
 }
 
 type Ray {
-    origin: float,
-    direction: float,
-}
-
-type Range with iterator {
-    start: int,
-    end: int,
+    origin: Vec3,
+    direction: Vec3,
 }
 
 def main() -> int {
-    let a = Ray(0.0, 0.0);
+    let a = Vec3(0.0, 0.0, 1.0);
 }
-
-def range(start: int, end: int) -> iterator {
-    return Range(start, end);
-}
-
-def pow(a: int, b: int) -> int {
-    let result = a;
-
-    for i in range(0, b) {
-        result = result * result;
-    }
-
-    return result;
-}
-
-//native def sqrt(x: int) -> float;
-
-//internal def length(self: Vec3) -> float {
-//    return 
-//}
-//
-//internal def mod(self: int) -> int {
-//    if self < 0 {
-//        return -self;
-//    }
-//
-//    return self;
-//}
-//
-//internal def bytes(self: int) -> int {
-//    return 4;
-//}

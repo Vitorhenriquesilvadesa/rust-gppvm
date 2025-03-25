@@ -1,12 +1,19 @@
-use std::{
-    collections::HashMap,
-    fmt::{self, Display},
-};
+use std::{ cell::RefCell, collections::HashMap, fmt::{ self, Display }, rc::Rc };
 
-use crate::gpp_error;
-
-use super::lexer::{
-    create_keywords, KeywordKind, Literal, OperatorKind, PunctuationKind, Token, TokenKind,
+use super::{
+    ast::FieldDeclaration,
+    errors::{ CompilationError, CompilerErrorReporter, ParseError },
+    expressions::Expression,
+    lexer::{
+        create_keywords,
+        KeywordKind,
+        Literal,
+        OperatorKind,
+        PunctuationKind,
+        Token,
+        TokenKind,
+    },
+    statements::Statement,
 };
 
 pub struct Parser {
@@ -14,58 +21,7 @@ pub struct Parser {
     statements: Vec<Statement>,
     current: usize,
     keywords: HashMap<String, TokenKind>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
-    Literal(Token),
-    Unary(Token, Box<Expression>),
-    Arithmetic(Box<Expression>, Token, Box<Expression>),
-    Logical(Box<Expression>, Token, Box<Expression>),
-    Ternary(Box<Expression>, Box<Expression>, Box<Expression>),
-    Assign(Token, Box<Expression>),
-    Lambda,
-    Get(Box<Expression>, Token),
-    Variable(Token),
-    Set(Box<Expression>, Token, Box<Expression>),
-    Call(Box<Expression>, Token, Vec<Expression>),
-    Tuple(Vec<Box<Expression>>),
-    List(Vec<Box<Expression>>),
-    TypeComposition(Vec<Token>),
-    Attribute(Token, Vec<Box<Expression>>),
-    Group(Box<Expression>),
-    Void,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    // region:  --- Statements
-    If(Token, Expression, Box<Statement>, Option<Box<Statement>>),
-    While(Expression, Box<Statement>),
-    ForEach(Token, Expression, Box<Statement>),
-    Expression(Expression),
-    Match,
-    Scope(Vec<Box<Statement>>),
-    Import(Token),
-    Return(Expression),
-    // endregion:  --- Statements
-
-    // region:  --- Declarations
-    Decorator(Token, Vec<Expression>),
-    Type(Token, Vec<Token>, Vec<FieldDeclaration>),
-    Function(Token, Vec<FieldDeclaration>, Box<Statement>, Expression),
-    Global,
-    Variable(Token, Option<Expression>),
-    // endregion:  --- Statements
-
-    // region:  --- For Compiler
-    EndCode, // endregion:  --- For Compiler
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldDeclaration {
-    pub name: Token,
-    pub kind: Expression,
+    reporter: Rc<RefCell<CompilerErrorReporter>>,
 }
 
 pub enum CollectionKind {
@@ -82,40 +38,6 @@ impl Display for Statement {
     }
 }
 
-impl Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expression::Literal(token) => write!(f, "{}", token),
-            Expression::Unary(op, expr) => write!(f, "({} {})", op, expr),
-            Expression::Arithmetic(left, op, right) => write!(f, "({} {} {})", left, op, right),
-            Expression::Logical(left, op, right) => write!(f, "({} {} {})", left, op, right),
-            Expression::Ternary(cond, then_expr, else_expr) => {
-                write!(f, "Ternary({} ? {} : {})", cond, then_expr, else_expr)
-            }
-            Expression::Assign(var, expr) => write!(f, "({} = {})", var, expr),
-            Expression::Lambda => write!(f, "(lambda)"),
-            Expression::Get(object, field) => write!(f, "Get({}.{})", object, field),
-            Expression::Set(object, field, value) => {
-                write!(f, "Set({}.{} = {})", object, field, value)
-            }
-            Expression::Variable(name) => write!(f, "Variable({})", name),
-            Expression::Call(callee, _, args) => write!(f, "Call({:?}, {:?})", callee, args),
-            Expression::Tuple(values) => write!(f, "Tuple({:?})", values),
-            Expression::List(values) => write!(f, "List({:?})", values),
-            Expression::Group(expr) => write!(f, "Group({:?})", expr),
-            Expression::Attribute(name, args) => write!(f, "Attribute({:?}, {:?})", name, args),
-            Expression::Void => write!(f, "Void()"),
-            Expression::TypeComposition(tokens) => write!(f, "TypeComposition"),
-        }
-    }
-}
-
-impl FieldDeclaration {
-    pub fn new(name: Token, kind: Expression) -> Self {
-        FieldDeclaration { name, kind }
-    }
-}
-
 impl Parser {
     pub fn new() -> Self {
         Parser {
@@ -123,15 +45,29 @@ impl Parser {
             tokens: Vec::new(),
             statements: Vec::new(),
             keywords: create_keywords(),
+            reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
         }
     }
 
-    pub fn parse(&mut self, tokens: Vec<Token>) -> &Vec<Statement> {
+    pub fn report_error(&mut self, error: CompilationError) {
+        self.reporter.borrow_mut().report_error(error);
+    }
+
+    pub fn parse(
+        &mut self,
+        reporter: Rc<RefCell<CompilerErrorReporter>>,
+        tokens: Vec<Token>
+    ) -> &Vec<Statement> {
         self.reset_internal_state(tokens);
+
+        self.reporter = reporter.clone();
 
         while !self.is_at_end() {
             let stmt = self.declaration();
-            self.statements.push(stmt);
+            match stmt {
+                Ok(s) => self.statements.push(s),
+                Err(e) => self.synchronize(),
+            }
         }
 
         self.statements.push(Statement::EndCode);
@@ -139,24 +75,26 @@ impl Parser {
         &self.statements
     }
 
-    fn declaration(&mut self) -> Statement {
+    fn declaration(&mut self) -> Result<Statement, ParseError> {
         match self.advance().kind {
-            TokenKind::Keyword(keyword) => match keyword {
-                KeywordKind::Return => self.return_statement(),
-                KeywordKind::Type => self.type_declaration(),
-                KeywordKind::Def => self.function_declaration(),
-                _ => {
-                    self.backtrack();
-                    self.statement()
+            TokenKind::Keyword(keyword) =>
+                match keyword {
+                    KeywordKind::Return => self.return_statement(),
+                    KeywordKind::Type => self.type_declaration(),
+                    KeywordKind::Def => self.function_declaration(),
+                    _ => {
+                        self.backtrack();
+                        self.statement()
+                    }
                 }
-            },
-            TokenKind::Punctuation(punctuation) => match punctuation {
-                PunctuationKind::Hash => self.decorator_declaration(),
-                _ => {
-                    self.backtrack();
-                    self.statement()
+            TokenKind::Punctuation(punctuation) =>
+                match punctuation {
+                    PunctuationKind::Hash => self.decorator_declaration(),
+                    _ => {
+                        self.backtrack();
+                        self.statement()
+                    }
                 }
-            },
             _ => {
                 self.backtrack();
                 self.statement()
@@ -164,98 +102,97 @@ impl Parser {
         }
     }
 
-    fn decorator_declaration(&mut self) -> Statement {
+    fn decorator_declaration(&mut self) -> Result<Statement, ParseError> {
         let hash_token = self.previous();
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBracket),
-            String::from("Expect '[' after '#'."),
-        );
+            String::from("Expect '[' after '#'.")
+        )?;
 
         let mut decorators: Vec<Expression> = Vec::new();
 
-        let mut decorator = self.parse_decorator();
+        let mut decorator = self.parse_decorator()?;
         decorators.push(decorator);
 
         while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
-            decorator = self.parse_decorator();
+            decorator = self.parse_decorator()?;
             decorators.push(decorator);
         }
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::RightBracket),
-            String::from("Expect ']' after attributues."),
+            String::from("Expect ']' after attributues.")
         );
 
-        Statement::Decorator(hash_token, decorators)
+        Ok(Statement::Decorator(hash_token, decorators))
     }
 
-    fn parse_decorator(&mut self) -> Expression {
+    fn parse_decorator(&mut self) -> Result<Expression, ParseError> {
         let decorator_name = self.eat(
             TokenKind::Identifier,
-            String::from("Expect attribute name."),
-        );
+            String::from("Expect attribute name.")
+        )?;
 
-        let mut args: Vec<Box<Expression>> = Vec::new();
+        let mut args: Vec<Rc<Expression>> = Vec::new();
 
         if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftParen)]) {
-            let mut arg = self.expression();
-            args.push(Box::new(arg));
+            let mut arg = self.expression()?;
+            args.push(Rc::new(arg));
 
             if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightParen)]) {
                 while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
-                    arg = self.expression();
-                    args.push(Box::new(arg));
+                    arg = self.expression()?;
+                    args.push(Rc::new(arg));
                 }
             }
 
             self.eat(
                 TokenKind::Punctuation(PunctuationKind::RightParen),
-                String::from("Expect ')' after attribute arguments."),
-            );
+                String::from("Expect ')' after attribute arguments.")
+            )?;
         }
 
-        Expression::Attribute(decorator_name, args)
+        Ok(Expression::Attribute(decorator_name, args))
     }
 
-    fn function_declaration(&mut self) -> Statement {
+    fn function_declaration(&mut self) -> Result<Statement, ParseError> {
         let function_name = self.eat(
             TokenKind::Identifier,
-            String::from("Expect function name after 'def'."),
-        );
+            String::from("Expect function name after 'def'.")
+        )?;
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftParen),
-            String::from(format!(
-                "Expect '(' after function name, but got {}.",
-                self.peek().lexeme
-            )),
-        );
+            String::from(format!("Expect '(' after function name, but got {}.", self.peek().lexeme))
+        )?;
 
         let mut params: Vec<FieldDeclaration> = Vec::new();
 
         if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightParen)]) {
-            let param_name = self.eat(TokenKind::Identifier, String::from("Expect param name."));
+            let param_name = self.eat(TokenKind::Identifier, String::from("Expect param name."))?;
 
             self.eat(
                 TokenKind::Punctuation(PunctuationKind::Colon),
-                String::from("Expect ':' after param name."),
-            );
+                String::from("Expect ':' after param name.")
+            )?;
 
-            let param_type = self.type_composition();
+            let param_type = self.type_composition()?;
 
             params.push(FieldDeclaration::new(param_name, param_type));
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
-                let param_name =
-                    self.eat(TokenKind::Identifier, String::from("Expect param name."));
+                let param_name = self.eat(
+                    TokenKind::Identifier,
+                    String::from("Expect param name.")
+                )?;
 
                 self.eat(
                     TokenKind::Punctuation(PunctuationKind::Colon),
-                    String::from("Expect ':' after param name."),
-                );
+                    String::from("Expect ':' after param name.")
+                )?;
 
-                let param_type = self.type_composition();
+                let param_type = self.type_composition()?;
 
                 params.push(FieldDeclaration::new(param_name, param_type));
             }
@@ -263,96 +200,93 @@ impl Parser {
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::RightParen),
-            String::from("Expect ')' after function params."),
-        );
+            String::from("Expect ')' after function params.")
+        )?;
 
         let mut return_kind: Expression;
 
         self.eat(
             TokenKind::Operator(OperatorKind::Arrow),
-            format!(
-                "Expect function return kind. At line {}",
-                self.previous().line
-            ),
-        );
-        return_kind = self.type_composition();
+            format!("Expect function return kind. At line {}", self.previous().line)
+        )?;
+
+        return_kind = self.type_composition()?;
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
-            String::from(format!(
-                "Expect '{{' before function body, but got {}.",
-                self.peek().lexeme
-            )),
+            String::from(
+                format!("Expect '{{' before function body, but got {}.", self.peek().lexeme)
+            )
         );
 
-        let body = self.parse_scope();
+        let body = self.parse_scope()?;
 
-        Statement::Function(function_name, params, Box::new(body), return_kind)
+        Ok(Statement::Function(function_name, params, Rc::new(body), return_kind))
     }
 
-    fn type_composition(&mut self) -> Expression {
+    fn type_composition(&mut self) -> Result<Expression, ParseError> {
         let mut names: Vec<Token> = Vec::new();
 
-        names.push(self.eat(
-            TokenKind::Identifier,
-            format!(
-                "Expect type name, but got '{}'. At line {}.",
-                self.peek().lexeme,
-                self.peek().line
-            ),
-        ));
+        names.push(
+            self.eat(
+                TokenKind::Identifier,
+                format!(
+                    "Expect type name, but got '{}'. At line {}.",
+                    self.peek().lexeme,
+                    self.peek().line
+                )
+            )?
+        );
 
         while self.try_eat(&[TokenKind::Operator(OperatorKind::BitwiseAnd)]) {
-            names.push(self.eat(TokenKind::Identifier, String::from("Expect type name.")));
+            names.push(self.eat(TokenKind::Identifier, String::from("Expect type name."))?);
         }
 
-        Expression::TypeComposition(names)
+        Ok(Expression::TypeComposition(names))
     }
 
-    fn type_declaration(&mut self) -> Statement {
+    fn type_declaration(&mut self) -> Result<Statement, ParseError> {
         let type_name = self.eat(
             TokenKind::Identifier,
-            String::from("Expect type name after 'type' keyword."),
-        );
+            String::from("Expect type name after 'type' keyword.")
+        )?;
 
         let mut archetypes: Vec<Token> = Vec::new();
 
         if self.try_eat(&[TokenKind::Keyword(KeywordKind::With)]) {
-            archetypes.push(self.eat(
-                TokenKind::Identifier,
-                "Expect archetype name after 'with' keyword.".to_string(),
-            ));
+            archetypes.push(
+                self.eat(
+                    TokenKind::Identifier,
+                    "Expect archetype name after 'with' keyword.".to_string()
+                )?
+            );
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
-                archetypes.push(self.eat(
-                    TokenKind::Identifier,
-                    "Expect archetype name after ','.".to_string(),
-                ));
+                archetypes.push(
+                    self.eat(TokenKind::Identifier, "Expect archetype name after ','.".to_string())?
+                );
             }
         }
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
-            String::from("Expect '{' after type name."),
-        );
+            String::from("Expect '{' after type name.")
+        )?;
 
         let mut fields: Vec<FieldDeclaration> = Vec::new();
 
         if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
             let mut field_name = self.eat(
                 TokenKind::Identifier,
-                String::from(format!(
-                    "Expect field name, but got '{}'.",
-                    self.peek().lexeme
-                )),
-            );
+                String::from(format!("Expect field name, but got '{}'.", self.peek().lexeme))
+            )?;
 
             self.eat(
                 TokenKind::Punctuation(PunctuationKind::Colon),
-                String::from("Expect ':' after field name."),
-            );
+                String::from("Expect ':' after field name.")
+            )?;
 
-            let mut field_type: Expression = self.type_composition();
+            let mut field_type: Expression = self.type_composition()?;
             fields.push(FieldDeclaration::new(field_name, field_type));
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
@@ -362,42 +296,45 @@ impl Parser {
 
                 field_name = self.eat(
                     TokenKind::Identifier,
-                    String::from(format!(
-                        "Expect field name, but got {}.",
-                        self.peek().lexeme
-                    )),
-                );
+                    String::from(format!("Expect field name, but got {}.", self.peek().lexeme))
+                )?;
 
                 self.eat(
                     TokenKind::Punctuation(PunctuationKind::Colon),
-                    String::from("Expect ':' after field name."),
-                );
+                    String::from("Expect ':' after field name.")
+                )?;
 
-                field_type = self.type_composition();
+                field_type = self.type_composition()?;
                 fields.push(FieldDeclaration::new(field_name, field_type));
             }
         }
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::RightBrace),
-            String::from("Expect '}' after type fields."),
-        );
+            String::from("Expect '}' after type fields.")
+        )?;
 
-        Statement::Type(type_name, archetypes, fields)
+        Ok(Statement::Type(type_name, archetypes, fields))
     }
 
-    fn statement(&mut self) -> Statement {
+    fn statement(&mut self) -> Result<Statement, ParseError> {
         match self.advance().kind {
-            TokenKind::Keyword(keyword) => match keyword {
-                KeywordKind::If => self.if_statement(),
-                KeywordKind::While => self.while_statement(),
-                KeywordKind::For => self.for_statement(),
-                KeywordKind::Let => self.variable_declaration(),
-                KeywordKind::Import => self.import_statement(),
-                _ => {
-                    gpp_error!("Invalid keyword '{}'.", self.peek().lexeme);
+            TokenKind::Keyword(keyword) =>
+                match keyword {
+                    KeywordKind::If => self.if_statement(),
+                    KeywordKind::While => self.while_statement(),
+                    KeywordKind::For => self.for_statement(),
+                    KeywordKind::Let => self.variable_declaration(),
+                    KeywordKind::Import => self.import_statement(),
+                    _ => {
+                        Err(
+                            ParseError::new(
+                                format!("Invalid keyword '{}'.", self.peek().lexeme),
+                                self.peek().line
+                            )
+                        )
+                    }
                 }
-            },
             _ => {
                 self.backtrack();
                 self.expression_statement()
@@ -405,317 +342,325 @@ impl Parser {
         }
     }
 
-    fn for_statement(&mut self) -> Statement {
+    fn for_statement(&mut self) -> Result<Statement, ParseError> {
         let variable_name = self.eat(
             TokenKind::Identifier,
-            String::from("Expect variable name after 'for'."),
-        );
+            String::from("Expect variable name after 'for'.")
+        )?;
 
         self.eat(
             TokenKind::Keyword(KeywordKind::In),
-            String::from("Expect 'in' after variable name."),
-        );
+            String::from("Expect 'in' after variable name.")
+        )?;
 
-        let iterator = self.expression();
+        let iterator = self.expression()?;
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
-            String::from("Expect '{' after iterator expression."),
-        );
+            String::from("Expect '{' after iterator expression.")
+        )?;
 
-        let body = self.parse_scope();
+        let body = self.parse_scope()?;
 
-        Statement::ForEach(variable_name, iterator, Box::new(body))
+        Ok(Statement::ForEach(variable_name, iterator, Box::new(body)))
     }
 
-    fn import_statement(&mut self) -> Statement {
+    fn import_statement(&mut self) -> Result<Statement, ParseError> {
         let module_name = self.eat(
             TokenKind::Identifier,
-            String::from("Expect module name after 'import'."),
-        );
+            String::from("Expect module name after 'import'.")
+        )?;
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
-            String::from("Expect ';' after module import."),
+            String::from("Expect ';' after module import.")
         );
 
-        Statement::Import(module_name)
+        Ok(Statement::Import(module_name))
     }
 
-    fn variable_declaration(&mut self) -> Statement {
-        let name = self.eat(
-            TokenKind::Identifier,
-            String::from("Expect identifier after 'let'."),
-        );
+    fn variable_declaration(&mut self) -> Result<Statement, ParseError> {
+        let name = self.eat(TokenKind::Identifier, String::from("Expect identifier after 'let'."))?;
 
         let mut value: Option<Expression> = None;
 
         if self.try_eat(&[TokenKind::Operator(OperatorKind::Equal)]) {
-            value = Some(self.expression());
+            value = Some(self.expression()?);
         }
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
-            String::from(format!(
-                "Expect ';' after variable declaration, but got '{}'.",
-                self.peek().lexeme
-            )),
+            String::from(
+                format!("Expect ';' after variable declaration, but got '{}'.", self.peek().lexeme)
+            )
         );
 
-        Statement::Variable(name, value)
+        Ok(Statement::Variable(name, value))
     }
 
-    fn while_statement(&mut self) -> Statement {
-        let condition = self.expression();
+    fn while_statement(&mut self) -> Result<Statement, ParseError> {
+        let condition = self.expression()?;
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
-            String::from("Expect '{' after 'while' condition."),
+            String::from("Expect '{' after 'while' condition.")
         );
 
-        let body = self.parse_scope();
+        let body = self.parse_scope()?;
 
-        Statement::While(condition, Box::new(body))
+        Ok(Statement::While(condition, Box::new(body)))
     }
 
-    fn if_statement(&mut self) -> Statement {
+    fn if_statement(&mut self) -> Result<Statement, ParseError> {
         let keyword = self.previous();
-        let condition = self.expression();
+        let condition = self.expression()?;
         self.eat(
             TokenKind::Punctuation(PunctuationKind::LeftBrace),
             format!(
                 "Expect '{{' after 'if' condition, but got {:?}. At line {}.",
                 self.peek(),
                 self.peek().line
-            ),
+            )
         );
 
-        let then_branch = self.parse_scope();
+        let then_branch = self.parse_scope()?;
 
         let mut else_branch: Option<Box<Statement>> = None;
 
         if self.try_eat(&[TokenKind::Keyword(KeywordKind::Else)]) {
             self.eat(
                 TokenKind::Punctuation(PunctuationKind::LeftBrace),
-                String::from(format!(
-                    "Expect '{{' after 'else' keyword, but got {:?}",
-                    self.peek()
-                )),
+                String::from(format!("Expect '{{' after 'else' keyword, but got {:?}", self.peek()))
             );
 
-            else_branch = Some(Box::new(self.parse_scope()));
+            else_branch = Some(Box::new(self.parse_scope()?));
         }
 
-        Statement::If(keyword, condition, Box::new(then_branch), else_branch)
+        Ok(Statement::If(keyword, condition, Box::new(then_branch), else_branch))
     }
 
-    fn expression_statement(&mut self) -> Statement {
-        let expr = self.expression();
+    fn expression_statement(&mut self) -> Result<Statement, ParseError> {
+        let expr = self.expression()?;
+
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
-            String::from(format!(
-                "Expect ';' after expression. At line {}.",
-                self.previous().line
-            )),
-        );
-        Statement::Expression(expr)
+            String::from(format!("Expect ';' after expression. At line {}.", self.previous().line))
+        )?;
+
+        Ok(Statement::Expression(expr))
     }
 
-    fn parse_scope(&mut self) -> Statement {
-        let mut statements = Vec::<Box<Statement>>::new();
+    fn parse_scope(&mut self) -> Result<Statement, ParseError> {
+        let mut statements = Vec::<Rc<Statement>>::new();
 
         while !self.try_eat(&[TokenKind::Punctuation(PunctuationKind::RightBrace)]) {
-            statements.push(Box::new(self.declaration()));
+            statements.push(Rc::new(self.declaration()?));
         }
 
-        Statement::Scope(statements)
+        Ok(Statement::Scope(statements))
     }
 
-    fn expression(&mut self) -> Expression {
+    fn expression(&mut self) -> Result<Expression, ParseError> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Expression {
-        let expr = self.ternary();
+    fn assignment(&mut self) -> Result<Expression, ParseError> {
+        let expr = self.ternary()?;
 
         if self.try_eat(&[TokenKind::Operator(OperatorKind::Equal)]) {
             let equals = self.previous();
-            let value = self.assignment();
+            let value = self.assignment()?;
 
             match expr {
                 Expression::Variable(name) => {
-                    return Expression::Assign(name, Box::new(value));
+                    return Ok(Expression::Assign(name, Rc::new(value)));
                 }
 
                 Expression::Get(object, name) => {
-                    return Expression::Set(object, name, Box::new(value));
+                    return Ok(Expression::Set(object, name, Rc::new(value)));
                 }
 
                 _ => {
-                    gpp_error!("Invalid assignment target at line {}.", equals);
+                    return Err(
+                        ParseError::new("Invalid assignment target.".to_string(), equals.line)
+                    );
                 }
             }
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn ternary(&mut self) -> Expression {
-        let if_branch = self.or();
+    fn ternary(&mut self) -> Result<Expression, ParseError> {
+        let if_branch = self.or()?;
 
         if self.try_eat(&[TokenKind::Keyword(KeywordKind::If)]) {
-            let condition = self.expression();
+            let condition = self.expression()?;
 
             self.eat(
                 TokenKind::Keyword(KeywordKind::Else),
-                String::from("Expect 'else' keyword after condition."),
+                String::from("Expect 'else' keyword after condition.")
             );
 
-            let else_branch = self.expression();
-            return Expression::Ternary(
-                Box::new(condition),
-                Box::new(if_branch),
-                Box::new(else_branch),
+            let else_branch = self.expression()?;
+            return Ok(
+                Expression::Ternary(Rc::new(condition), Rc::new(if_branch), Rc::new(else_branch))
             );
         }
 
-        if_branch
+        Ok(if_branch)
     }
 
-    fn or(&mut self) -> Expression {
-        let mut expr = self.and();
+    fn or(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.and()?;
 
         while self.try_eat(&[TokenKind::Operator(OperatorKind::Or)]) {
             let operator = self.previous();
-            let right = self.and();
-            expr = Expression::Logical(Box::new(expr), operator, Box::new(right));
+            let right = self.and()?;
+            expr = Expression::Logical(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn and(&mut self) -> Expression {
-        let mut expr = self.equality();
+    fn and(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.equality()?;
 
         while self.try_eat(&[TokenKind::Operator(OperatorKind::And)]) {
             let operator = self.previous();
-            let right = self.equality();
-            expr = Expression::Logical(Box::new(expr), operator, Box::new(right));
+            let right = self.equality()?;
+            expr = Expression::Logical(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn equality(&mut self) -> Expression {
-        let mut expr = self.comparison();
+    fn equality(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.comparison()?;
 
-        while self.try_eat(&[
-            TokenKind::Operator(OperatorKind::EqualEqual),
-            TokenKind::Operator(OperatorKind::NotEqual),
-        ]) {
+        while
+            self.try_eat(
+                &[
+                    TokenKind::Operator(OperatorKind::EqualEqual),
+                    TokenKind::Operator(OperatorKind::NotEqual),
+                ]
+            )
+        {
             let operator = self.previous();
-            let right = self.comparison();
-            expr = Expression::Arithmetic(Box::new(expr), operator, Box::new(right));
+            let right = self.comparison()?;
+            expr = Expression::Arithmetic(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn comparison(&mut self) -> Expression {
-        let mut expr = self.term();
+    fn comparison(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.term()?;
 
-        while self.try_eat(&[
-            TokenKind::Operator(OperatorKind::Less),
-            TokenKind::Operator(OperatorKind::LessEqual),
-            TokenKind::Operator(OperatorKind::Greater),
-            TokenKind::Operator(OperatorKind::GreaterEqual),
-        ]) {
+        while
+            self.try_eat(
+                &[
+                    TokenKind::Operator(OperatorKind::Less),
+                    TokenKind::Operator(OperatorKind::LessEqual),
+                    TokenKind::Operator(OperatorKind::Greater),
+                    TokenKind::Operator(OperatorKind::GreaterEqual),
+                ]
+            )
+        {
             let operator = self.previous();
-            let right = self.term();
-            expr = Expression::Arithmetic(Box::new(expr), operator, Box::new(right));
+            let right = self.term()?;
+            expr = Expression::Arithmetic(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn term(&mut self) -> Expression {
-        let mut expr = self.factor();
+    fn term(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.factor()?;
 
-        while self.try_eat(&[
-            TokenKind::Operator(OperatorKind::Minus),
-            TokenKind::Operator(OperatorKind::Plus),
-        ]) {
+        while
+            self.try_eat(
+                &[TokenKind::Operator(OperatorKind::Minus), TokenKind::Operator(OperatorKind::Plus)]
+            )
+        {
             let operator = self.previous();
-            let right = self.factor();
-            expr = Expression::Arithmetic(Box::new(expr), operator, Box::new(right));
+            let right = self.factor()?;
+            expr = Expression::Arithmetic(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn factor(&mut self) -> Expression {
-        let mut expr = self.unary();
+    fn factor(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.unary()?;
 
-        while self.try_eat(&[
-            TokenKind::Operator(OperatorKind::Star),
-            TokenKind::Operator(OperatorKind::Slash),
-        ]) {
+        while
+            self.try_eat(
+                &[TokenKind::Operator(OperatorKind::Star), TokenKind::Operator(OperatorKind::Slash)]
+            )
+        {
             let operator = self.previous();
-            let right = self.factor();
-            expr = Expression::Arithmetic(Box::new(expr), operator, Box::new(right));
+            let right = self.factor()?;
+            expr = Expression::Arithmetic(Rc::new(expr), operator, Rc::new(right));
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn unary(&mut self) -> Expression {
-        if self.try_eat(&[
-            TokenKind::Operator(OperatorKind::Minus),
-            TokenKind::Operator(OperatorKind::Plus),
-            TokenKind::Operator(OperatorKind::Not),
-        ]) {
+    fn unary(&mut self) -> Result<Expression, ParseError> {
+        if
+            self.try_eat(
+                &[
+                    TokenKind::Operator(OperatorKind::Minus),
+                    TokenKind::Operator(OperatorKind::Plus),
+                    TokenKind::Operator(OperatorKind::Not),
+                ]
+            )
+        {
             let operator = self.previous();
-            let expression = self.unary();
-            return Expression::Unary(operator, Box::new(expression));
+            let expression = self.unary()?;
+            return Ok(Expression::Unary(operator, Rc::new(expression)));
         }
 
-        self.call()
+        Ok(self.call()?)
     }
 
-    fn call(&mut self) -> Expression {
-        let mut expr = self.literal();
+    fn call(&mut self) -> Result<Expression, ParseError> {
+        let mut expr = self.literal()?;
 
         loop {
             if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftParen)]) {
-                expr = self.finish_call(expr);
+                expr = self.finish_call(expr)?;
             } else if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
                 let name = self.eat(
                     TokenKind::Identifier,
-                    String::from("Expect property name after '.'."),
-                );
+                    String::from("Expect property name after '.'.")
+                )?;
 
-                expr = Expression::Get(Box::new(expr), name);
+                expr = Expression::Get(Rc::new(expr), name);
             } else {
                 break;
             }
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn finish_call(&mut self, callee: Expression) -> Expression {
+    fn finish_call(&mut self, callee: Expression) -> Result<Expression, ParseError> {
         let mut arguments = Vec::<Expression>::new();
         if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightParen)]) {
             let mut has_args = true;
 
             while has_args {
                 if arguments.iter().count() >= 255 {
-                    gpp_error!(
-                        "Can't have more than 255 arguments. At line {}.",
-                        self.peek().line
+                    return Err(
+                        ParseError::new(
+                            "Can't have more than 255 arguments.".to_string(),
+                            self.peek().line
+                        )
                     );
                 }
 
-                arguments.push(self.expression());
+                arguments.push(self.expression()?);
 
                 if !self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
                     has_args = false;
@@ -725,119 +670,136 @@ impl Parser {
 
         let paren = self.eat(
             TokenKind::Punctuation(PunctuationKind::RightParen),
-            format!("Expect ')' after arguments. At line {}.", self.peek().line),
-        );
+            format!("Expect ')' after arguments. At line {}.", self.peek().line)
+        )?;
 
-        Expression::Call(Box::new(callee), paren, arguments)
+        Ok(Expression::Call(Rc::new(callee), paren, arguments))
     }
 
-    fn literal_get(&mut self, target: Expression) -> Expression {
+    fn literal_get(&mut self, target: Expression) -> Result<Expression, ParseError> {
         let mut expr = target;
 
         expr = Expression::Get(
-            Box::new(expr),
+            Rc::new(expr),
             self.eat(
                 TokenKind::Identifier,
-                format!("Expect field name after '.'. At line {}.", self.peek().line),
-            ),
+                format!("Expect field name after '.'. At line {}.", self.peek().line)
+            )?
         );
 
         while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
             expr = Expression::Get(
-                Box::new(expr),
+                Rc::new(expr),
                 self.eat(
                     TokenKind::Identifier,
-                    format!("Expect field name after '.'. At line {}.", self.peek().line),
-                ),
+                    format!("Expect field name after '.'. At line {}.", self.peek().line)
+                )?
             );
         }
 
-        expr
+        Ok(expr)
     }
 
-    fn literal(&mut self) -> Expression {
-        if self.try_eat(&[
-            TokenKind::Literal(Literal::Int),
-            TokenKind::Literal(Literal::Float),
-            TokenKind::Literal(Literal::Boolean),
-            TokenKind::Literal(Literal::String),
-        ]) {
+    fn literal(&mut self) -> Result<Expression, ParseError> {
+        if
+            self.try_eat(
+                &[
+                    TokenKind::Literal(Literal::Int),
+                    TokenKind::Literal(Literal::Float),
+                    TokenKind::Literal(Literal::Boolean),
+                    TokenKind::Literal(Literal::String),
+                ]
+            )
+        {
             let expr = Expression::Literal(self.previous());
 
             if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
                 return self.literal_get(expr);
             } else {
-                return expr;
+                return Ok(expr);
             }
         }
 
         if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftParen)]) {
-            let expr = self.group();
+            let expr = self.group()?;
 
             if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
                 return self.literal_get(expr);
             } else {
-                return expr;
+                return Ok(expr);
             }
         }
 
         if self.try_eat(&[TokenKind::Identifier]) {
-            return Expression::Variable(self.previous());
+            return Ok(Expression::Variable(self.previous()));
         }
 
         match self.advance().kind {
-            TokenKind::Punctuation(punctuation) => match punctuation {
-                PunctuationKind::LeftBracket => self.collection_expression(
-                    PunctuationKind::RightBracket,
-                    "Expect ']' after list values.",
-                    CollectionKind::List,
-                ),
-                PunctuationKind::LeftParen => self.collection_expression(
-                    PunctuationKind::RightParen,
-                    "Expect ')' after tuple values.",
-                    CollectionKind::List,
-                ),
-                _ => {
-                    gpp_error!("Invalid punctuation {:?}.", self.previous());
+            TokenKind::Punctuation(punctuation) =>
+                match punctuation {
+                    PunctuationKind::LeftBracket =>
+                        self.collection_expression(
+                            PunctuationKind::RightBracket,
+                            "Expect ']' after list values.",
+                            CollectionKind::List
+                        ),
+                    PunctuationKind::LeftParen =>
+                        self.collection_expression(
+                            PunctuationKind::RightParen,
+                            "Expect ')' after tuple values.",
+                            CollectionKind::List
+                        ),
+                    _ => {
+                        Err(
+                            ParseError::new(
+                                format!("Invalid punctuation {:?}.", self.previous()),
+                                self.previous().line
+                            )
+                        )
+                    }
                 }
-            },
             _ => {
-                gpp_error!("Invalid expression {:?}.", self.peek());
+                Err(
+                    ParseError::new(
+                        format!("Invalid expression {:?}.", self.peek()),
+                        self.peek().line
+                    )
+                )
             }
         }
     }
 
-    fn group(&mut self) -> Expression {
-        let expr = self.expression();
+    fn group(&mut self) -> Result<Expression, ParseError> {
+        let expr = self.expression()?;
         self.eat(
             TokenKind::Punctuation(PunctuationKind::RightParen),
-            String::from("Expect ')' after group expression."),
+            String::from("Expect ')' after group expression.")
         );
 
-        Expression::Group(Box::new(expr))
+        Ok(Expression::Group(Rc::new(expr)))
     }
 
     fn collection_expression(
         &mut self,
         closing: PunctuationKind,
         error_msg: &str,
-        kind: CollectionKind,
-    ) -> Expression {
-        let mut values: Vec<Box<Expression>> = Vec::new();
+        kind: CollectionKind
+    ) -> Result<Expression, ParseError> {
+        let mut values: Vec<Rc<Expression>> = Vec::new();
 
         if !self.try_eat(&[TokenKind::Punctuation(PunctuationKind::RightBracket)]) {
-            values.push(Box::new(self.expression()));
+            values.push(Rc::new(self.expression()?));
 
             while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
-                values.push(Box::new(self.expression()));
+                values.push(Rc::new(self.expression()?));
             }
 
-            self.eat(TokenKind::Punctuation(closing), error_msg.to_string());
+            self.eat(TokenKind::Punctuation(closing), error_msg.to_string())?;
         }
 
         match kind {
-            CollectionKind::List => Expression::List(values),
-            CollectionKind::Tuple => Expression::Tuple(values),
+            CollectionKind::List => Ok(Expression::List(values)),
+            CollectionKind::Tuple => Ok(Expression::Tuple(values)),
         }
     }
 
@@ -853,12 +815,10 @@ impl Parser {
         self.tokens = tokens;
     }
 
-    fn eat(&mut self, kind: TokenKind, msg: String) -> Token {
+    fn eat(&mut self, kind: TokenKind, msg: String) -> Result<Token, ParseError> {
         match self.try_eat(&[kind]) {
-            true => self.previous(),
-            false => {
-                gpp_error!("{}", msg);
-            }
+            true => Ok(self.previous()),
+            false => { Err(ParseError::new(msg, self.peek().line)) }
         }
     }
 
@@ -896,13 +856,47 @@ impl Parser {
         self.current -= 1;
     }
 
-    fn return_statement(&mut self) -> Statement {
-        let value = Statement::Return(self.expression());
+    fn return_statement(&mut self) -> Result<Statement, ParseError> {
+        let value = Statement::Return(self.expression()?);
+
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
-            "Expect ';' after return value.".to_string(),
-        );
+            "Expect ';' after return value.".to_string()
+        )?;
 
-        value
+        Ok(value)
+    }
+
+    fn synchronize(&mut self) {
+        while !self.is_at_end() {
+            if let TokenKind::Punctuation(kind) = self.previous().kind {
+                if let PunctuationKind::SemiColon = kind {
+                    return;
+                }
+            }
+
+            match self.peek().kind {
+                TokenKind::Keyword(keyword) => {
+                    match keyword {
+                        | KeywordKind::Def
+                        | KeywordKind::Type
+                        | KeywordKind::For
+                        | KeywordKind::If
+                        | KeywordKind::Let
+                        | KeywordKind::While => {
+                            return;
+                        }
+
+                        _ => {
+                            self.advance();
+                        }
+                    }
+                }
+
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 }

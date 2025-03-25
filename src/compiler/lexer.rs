@@ -1,9 +1,13 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     error::Error,
-    fmt::{self, Display},
+    fmt::{ self, Display },
     ops::Add,
+    rc::Rc,
 };
+
+use super::errors::CompilerErrorReporter;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -127,23 +131,18 @@ pub struct Lexer {
     length: usize,
     tokens: Vec<Token>,
     keywords: HashMap<String, TokenKind>,
+    reporter: Rc<RefCell<CompilerErrorReporter>>,
 }
 
 pub fn create_keywords() -> HashMap<String, TokenKind> {
     let mut keywords = HashMap::new();
     keywords.insert("def".to_string(), TokenKind::Keyword(KeywordKind::Def));
-    keywords.insert(
-        "global".to_string(),
-        TokenKind::Keyword(KeywordKind::Global),
-    );
+    keywords.insert("global".to_string(), TokenKind::Keyword(KeywordKind::Global));
     keywords.insert("let".to_string(), TokenKind::Keyword(KeywordKind::Let));
     keywords.insert("true".to_string(), TokenKind::Literal(Literal::Boolean));
     keywords.insert("false".to_string(), TokenKind::Literal(Literal::Boolean));
     keywords.insert("type".to_string(), TokenKind::Keyword(KeywordKind::Type));
-    keywords.insert(
-        "import".to_string(),
-        TokenKind::Keyword(KeywordKind::Import),
-    );
+    keywords.insert("import".to_string(), TokenKind::Keyword(KeywordKind::Import));
     keywords.insert("not".to_string(), TokenKind::Operator(OperatorKind::Not));
     keywords.insert("and".to_string(), TokenKind::Operator(OperatorKind::And));
     keywords.insert("or".to_string(), TokenKind::Operator(OperatorKind::Or));
@@ -155,10 +154,7 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert("for".to_string(), TokenKind::Keyword(KeywordKind::For));
     keywords.insert("in".to_string(), TokenKind::Keyword(KeywordKind::In));
     keywords.insert("with".to_string(), TokenKind::Keyword(KeywordKind::With));
-    keywords.insert(
-        "return".to_string(),
-        TokenKind::Keyword(KeywordKind::Return),
-    );
+    keywords.insert("return".to_string(), TokenKind::Keyword(KeywordKind::Return));
 
     keywords
 }
@@ -174,6 +170,7 @@ impl Lexer {
             length: 0,
             tokens: Vec::new(),
             keywords: create_keywords(),
+            reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
         }
     }
 
@@ -186,6 +183,7 @@ impl Lexer {
             start: 0,
             tokens: Vec::new(),
             keywords: create_keywords(),
+            reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
         }
     }
 
@@ -199,7 +197,9 @@ impl Lexer {
         self.keywords = create_keywords();
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
+    pub fn scan_tokens(&mut self, reporter: Rc<RefCell<CompilerErrorReporter>>) -> &Vec<Token> {
+        self.reporter = reporter.clone();
+
         while !self.is_at_end() {
             self.scan_token();
         }
@@ -292,21 +292,22 @@ impl Lexer {
             '\'' => self.string('\'').expect("Error in string."),
             '.' => self.make_token(TokenKind::Punctuation(PunctuationKind::Dot)),
 
-            _ => match c {
-                '_' => {
-                    if self.is_alpha_numeric(self.peek_next()) {
-                        self.identifier().expect("Error in identifier.");
-                    } else {
-                        self.make_token(TokenKind::Underscore);
+            _ =>
+                match c {
+                    '_' => {
+                        if self.is_alpha_numeric(self.peek_next()) {
+                            self.identifier().expect("Error in identifier.");
+                        } else {
+                            self.make_token(TokenKind::Underscore);
+                        }
+                    }
+                    _ if self.is_digit(c) => self.number(),
+                    _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
+                    _ => {
+                        dbg!(&c);
+                        panic!("Invalid character '{}' at line {}", c, self.line);
                     }
                 }
-                _ if self.is_digit(c) => self.number(),
-                _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
-                _ => {
-                    dbg!(&c);
-                    panic!("Invalid character '{}' at line {}", c, self.line);
-                }
-            },
         }
     }
 
@@ -318,14 +319,8 @@ impl Lexer {
             self.advance();
         }
 
-        let lexeme: String = self.source[self.start..self.start + self.length]
-            .iter()
-            .collect();
-        let kind = self
-            .keywords
-            .get(&lexeme)
-            .cloned()
-            .unwrap_or(TokenKind::Identifier);
+        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
+        let kind = self.keywords.get(&lexeme).cloned().unwrap_or(TokenKind::Identifier);
 
         self.make_token_with_lexeme(kind, lexeme);
         Ok(())
@@ -348,9 +343,7 @@ impl Lexer {
             is_float = true;
         }
 
-        let lexeme: String = self.source[self.start..self.start + self.length]
-            .iter()
-            .collect();
+        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
 
         if is_float {
             self.make_token_with_lexeme(TokenKind::Literal(Literal::Float), lexeme);
@@ -402,9 +395,7 @@ impl Lexer {
     }
 
     fn make_token(&mut self, kind: TokenKind) {
-        let lexeme: String = self.source[self.start..self.start + self.length]
-            .iter()
-            .collect();
+        let lexeme: String = self.source[self.start..self.start + self.length].iter().collect();
         self.make_token_with_lexeme(kind, lexeme);
     }
 

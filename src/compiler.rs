@@ -5,11 +5,17 @@ mod instructions;
 mod lexer;
 mod parser;
 mod semantics;
+mod statements;
+mod expressions;
 mod ir_generator;
+mod ast;
 
+use errors::CompilerErrorReporter;
 use ir_generator::IRGenerator;
 use semantics::SemanticAnalyzer;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Instant;
 use std::{ env, fs };
 use std::{ error::Error, io::{ self, Read } };
@@ -63,6 +69,7 @@ pub struct Compiler {
     parser: parser::Parser,
     semantic_analyzer: semantics::SemanticAnalyzer,
     ir_generator: IRGenerator,
+    reporter: Rc<RefCell<CompilerErrorReporter>>,
 }
 
 impl Compiler {
@@ -72,15 +79,23 @@ impl Compiler {
             parser: Parser::new(),
             semantic_analyzer: SemanticAnalyzer::new(),
             ir_generator: IRGenerator::new(),
+            reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
         }
     }
 
     pub fn compile(&mut self, source: String) {
         self.lexer.reset_internal_state(source);
 
-        let tokens = self.lexer.scan_tokens();
-        let stmts = self.parser.parse(tokens.clone());
-        let semantic_code = self.semantic_analyzer.analyze(stmts.clone());
-        let ir_code = self.ir_generator.generate(&semantic_code);
+        let tokens = self.lexer.scan_tokens(Rc::clone(&self.reporter));
+        let stmts = self.parser.parse(Rc::clone(&self.reporter), tokens.clone());
+        let semantic_code = self.semantic_analyzer.analyze(
+            Rc::clone(&self.reporter),
+            stmts.clone()
+        );
+        let ir_code = self.ir_generator.generate(Rc::clone(&self.reporter), &semantic_code);
+
+        for error in self.reporter.borrow().get_errors() {
+            eprintln!("Error: {} At line {:?}.", error.msg, error.line);
+        }
     }
 }

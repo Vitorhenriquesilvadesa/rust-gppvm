@@ -1,23 +1,33 @@
+use std::{ cell::RefCell, rc::Rc };
+
 use super::{
-    parser::FieldDeclaration,
-    semantics::{SemanticCode, SymbolTable},
+    ast::FieldDeclaration,
+    errors::CompilerErrorReporter,
+    semantics::{ AnnotatedAST, SemanticCode, SymbolTable },
 };
 
 pub struct IRGenerator {
     semantic_code: SemanticCode,
+    reporter: Rc<RefCell<CompilerErrorReporter>>,
 }
 
 impl IRGenerator {
     pub fn new() -> Self {
         Self {
-            semantic_code: SemanticCode::new(SymbolTable::new(), Vec::new()),
+            semantic_code: SemanticCode::new(SymbolTable::new(), AnnotatedAST::new(Vec::new())),
+            reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
         }
     }
 
-    pub fn generate(&mut self, semantic_code: &SemanticCode) -> IntermediateCode {
+    pub fn generate(
+        &mut self,
+        reporter: Rc<RefCell<CompilerErrorReporter>>,
+        semantic_code: &SemanticCode
+    ) -> IntermediateCode {
         self.semantic_code = semantic_code.clone();
+        self.reporter = reporter;
 
-        //println!("{:#?}", self.semantic_code);
+        println!("{:#?}", self.semantic_code.ast);
 
         IntermediateCode::new()
     }

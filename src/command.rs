@@ -1,4 +1,5 @@
-use crate::compiler::{self, CompilerArguments};
+#![allow(dead_code)]
+use crate::compiler::{ self, CompilerArguments };
 
 pub struct CommandlineArguments {
     args: Vec<String>,
@@ -27,8 +28,6 @@ pub fn run(config: CommandlineArguments) -> Result<(), String> {
         }
         "-e" => todo!(),
 
-        _ => {
-            panic!("Unexpected argument.")
-        }
+        _ => { panic!("Unexpected argument.") }
     }
 }

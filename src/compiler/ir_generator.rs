@@ -232,7 +232,7 @@ impl IRGenerator {
         value: &AnnotatedExpression,
         kind: &TypeDescriptor
     ) -> Vec<u8> {
-        Vec::new()
+        Vec::<u8>::new()
     }
 
     fn split_u16(&self, short: u16) -> (u8, u8) {

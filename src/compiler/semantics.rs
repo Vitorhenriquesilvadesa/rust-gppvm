@@ -73,9 +73,15 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Clone, PartialEq, Hash, Eq)]
 struct Archetype {
     name: String,
+}
+
+impl std::fmt::Debug for Archetype {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
 }
 
 impl Display for Archetype {
@@ -281,10 +287,10 @@ pub struct SemanticAnalyzer {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionPrototype {
-    name: String,
-    params: Vec<FieldDeclaration>,
-    arity: usize,
-    return_kind: TypeDescriptor,
+    pub name: String,
+    pub params: Vec<FieldDeclaration>,
+    pub arity: usize,
+    pub return_kind: TypeDescriptor,
 }
 
 impl FunctionPrototype {
@@ -342,7 +348,7 @@ impl SymbolTable {
 
 #[derive(Debug, Clone)]
 pub struct AnnotatedAST {
-    statements: Vec<AnnotatedStatement>,
+    pub statements: Vec<AnnotatedStatement>,
 }
 
 impl AnnotatedAST {
@@ -1162,7 +1168,7 @@ impl SemanticAnalyzer {
 
         match symbol {
             Some(sv) => {
-                self.analyze_expr(&expression);
+                let value = self.analyze_expr(&expression);
 
                 let value_type = self.resolve_expr_type(&expression);
                 let symbol_type = sv.kind;
@@ -1178,11 +1184,11 @@ impl SemanticAnalyzer {
                             );
                         }
 
-                        AnnotatedExpression::Variable(token.clone(), kind)
+                        AnnotatedExpression::Assign(token.clone(), Box::new(value), kind)
                     }
                     None => {
                         self.context().set_infered_kind(&token.lexeme, value_type.clone());
-                        AnnotatedExpression::Variable(token.clone(), value_type)
+                        AnnotatedExpression::Assign(token.clone(), Box::new(value), value_type)
                     }
                 }
             }

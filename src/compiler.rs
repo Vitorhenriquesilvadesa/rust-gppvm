@@ -9,7 +9,10 @@ mod statements;
 mod expressions;
 mod ir_generator;
 mod ast;
+mod chunk;
+mod decompiler;
 
+use decompiler::Decompiler;
 use errors::CompilerErrorReporter;
 use ir_generator::IRGenerator;
 use semantics::SemanticAnalyzer;
@@ -93,6 +96,10 @@ impl Compiler {
             stmts.clone()
         );
         let ir_code = self.ir_generator.generate(Rc::clone(&self.reporter), &semantic_code);
+
+        println!("{:#?}", ir_code);
+
+        Decompiler::decompile(&ir_code);
 
         for error in self.reporter.borrow().get_errors() {
             eprintln!("Error: {} At line {:?}.", error.msg, error.line);

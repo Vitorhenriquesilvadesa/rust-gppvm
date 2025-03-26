@@ -1,14 +1,5 @@
-type Vec3 {
-    x: float,
-    y: float,
-    z: float,
-}
-
-type Ray {
-    origin: Vec3,
-    direction: Vec3,
-}
-
 def main() -> int {
-    let a = Vec3(0.0, 0.0, 1.0);
+    let a = 2 + 3;
+
+    a = a + 1;
 }

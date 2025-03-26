@@ -22,7 +22,7 @@ use super::{
     statements::Statement,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeComposition {
     mask: Vec<TypeDecl>,
 }

@@ -1,7 +1,7 @@
 use super::{
     chunk::CompileTimeChunk,
     instructions::Instruction,
-    ir_generator::{ IRFunction, IntermediateCode },
+    ir_generator::{IRFunction, IntermediateCode},
 };
 
 pub struct Decompiler {}
@@ -9,9 +9,18 @@ pub struct Decompiler {}
 impl Decompiler {
     pub fn decompile(code: &IntermediateCode) {
         for (name, function) in &code.functions {
-            println!("====== {} ======", name);
+            let width = 60;
+            println!(
+                "{}",
+                format!(
+                    "{:=^1$}",
+                    format!(" {} (arity = {}) ", name, function.arity),
+                    width
+                )
+            );
             Decompiler::decompile_function(function, code);
-            println!("==================\n\n");
+            println!("{}", "=".repeat(width));
+            println!("\n");
         }
     }
 
@@ -19,6 +28,7 @@ impl Decompiler {
         let mut index = 0;
 
         while index < function.chunk.code.len() {
+            print!("|");
             Decompiler::decompile_instruction(&mut index, &function.chunk, code);
         }
     }
@@ -45,36 +55,51 @@ impl Decompiler {
                         let pos = Decompiler::combine_u8_to_u16(code[*index + 1], code[*index + 2]);
                         println!(
                             "{}  {} {}   ; {:?}",
-                            instr_index,
-                            padded_instruction,
-                            pos,
-                            chunk.constants[pos as usize]
+                            instr_index, padded_instruction, pos, chunk.constants[pos as usize]
                         );
                         *index += 2;
                     }
                     Instruction::GetLocal | Instruction::SetLocal => {
-                        println!("{}  {} {}", instr_index, padded_instruction, code[*index + 1]);
+                        println!(
+                            "{}  {} {}",
+                            instr_index,
+                            padded_instruction,
+                            code[*index + 1]
+                        );
                         *index += 1;
                     }
 
-                    Instruction::Call => {
+                    Instruction::Call | Instruction::InvokeNative | Instruction::InvokeVirtual => {
                         let function_index = Decompiler::combine_u8_to_u32(
                             code[*index + 1],
                             code[*index + 2],
                             code[*index + 3],
-                            code[*index + 4]
+                            code[*index + 4],
                         );
 
                         let arity = code[*index + 5];
 
                         println!(
-                            "{}  {} {}   ; {}",
+                            "{}  {} {}   ; {} ({} args)",
                             instr_index,
                             padded_instruction,
                             function_index,
+                            ir.graph.inverse_connections[&function_index],
                             arity
                         );
                         *index += 5;
+                    }
+
+                    Instruction::JFalse | Instruction::Jump => {
+                        let offset = Decompiler::combine_u8_to_u32(
+                            code[*index + 1],
+                            code[*index + 2],
+                            code[*index + 3],
+                            code[*index + 4],
+                        );
+
+                        println!("{}  {}     ; {}", instr_index, padded_instruction, offset);
+                        *index += 4;
                     }
                     _ => {
                         println!("{}  {}", instr_index, padded_instruction);

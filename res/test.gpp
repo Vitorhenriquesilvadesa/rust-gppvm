@@ -1,10 +1,11 @@
-def add(a: int, b: int) -> int {
+def add(a: number, b: int) -> number {
     return a + b;
 }
 
 def main() -> int {
-    let a = add(3, 3);
-    let b = "Hello World";
-    let c = a;
-    return 3 / 5;
+    if 1 > 2 {
+        add(2, 3);
+    } else {
+        print(2);
+    }
 }

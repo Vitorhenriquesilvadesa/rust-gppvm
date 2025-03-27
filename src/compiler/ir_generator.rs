@@ -1,22 +1,16 @@
-use std::{ cell::RefCell, cmp::Ordering, collections::HashMap, rc::Rc };
+use std::{cell::RefCell, cmp::Ordering, collections::HashMap, rc::Rc};
 
 use crate::gpp_error;
 
 use super::{
     ast::FieldDeclaration,
-    chunk::{ CompileTimeChunk, CompileTimeValue },
+    chunk::{CompileTimeChunk, CompileTimeValue},
     errors::CompilerErrorReporter,
     instructions::Instruction,
-    lexer::{ KeywordKind, Literal, OperatorKind, Token, TokenKind },
+    lexer::{KeywordKind, Literal, OperatorKind, Token, TokenKind},
     semantics::{
-        AnnotatedAST,
-        AnnotatedExpression,
-        AnnotatedStatement,
-        FunctionPrototype,
-        SemanticCode,
-        SymbolTable,
-        TypeDescriptor,
-        Value,
+        AnnotatedAST, AnnotatedExpression, AnnotatedStatement, FunctionPrototype, SemanticCode,
+        SymbolTable, TypeDescriptor, Value,
     },
 };
 
@@ -29,7 +23,11 @@ struct LocalValue {
 
 impl LocalValue {
     fn new(name: String, depth: u32, is_initialized: bool) -> Self {
-        Self { name, depth, is_initialized }
+        Self {
+            name,
+            depth,
+            is_initialized,
+        }
     }
 }
 
@@ -40,9 +38,7 @@ pub struct CompileTimeStack {
 
 impl CompileTimeStack {
     pub fn new() -> Self {
-        Self {
-            values: Vec::new(),
-        }
+        Self { values: Vec::new() }
     }
 
     pub fn push(&mut self, value: LocalValue) {
@@ -86,10 +82,12 @@ impl IRGenerator {
     pub fn generate(
         &mut self,
         reporter: Rc<RefCell<CompilerErrorReporter>>,
-        semantic_code: &SemanticCode
+        semantic_code: &SemanticCode,
     ) -> IntermediateCode {
         self.semantic_code = semantic_code.clone();
         self.reporter = reporter;
+
+        self.generate_standard_native_functions();
 
         for annotated_stmt in self.semantic_code.ast.statements.clone() {
             self.generate_ir_for(&annotated_stmt);
@@ -98,58 +96,69 @@ impl IRGenerator {
         IntermediateCode::new(
             self.functions.clone(),
             self.kinds.clone(),
-            self.top_level_graph.clone()
+            self.top_level_graph.clone(),
         )
     }
 
-    fn generate_ir_for(&mut self, annotated_stmt: &AnnotatedStatement) {
+    fn generate_ir_for(&mut self, annotated_stmt: &AnnotatedStatement) -> Vec<u8> {
         match annotated_stmt {
-            AnnotatedStatement::Decorator(name, attributes) => {}
-            AnnotatedStatement::EndCode => {}
+            AnnotatedStatement::Decorator(name, attributes) => {
+                vec![]
+            }
+            AnnotatedStatement::EndCode => {
+                vec![]
+            }
             AnnotatedStatement::Expression(expression) => {
                 let code = self.generate_expr_ir(expression);
 
-                for byte in code {
-                    self.emit_byte(byte);
-                }
+                code
             }
-            AnnotatedStatement::ForEach(variable, condition, body) => {}
+            AnnotatedStatement::ForEach(variable, condition, body) => {
+                vec![]
+            }
             AnnotatedStatement::Function(prototype, body) => {
-                self.generate_function_ir(prototype, body);
+                self.generate_function_ir(prototype, body)
             }
-            AnnotatedStatement::Global => {}
+            AnnotatedStatement::Global => {
+                vec![]
+            }
             AnnotatedStatement::If(keyword, condition, then_branch, else_branch) => {
-                self.generate_if_ir(keyword, condition, then_branch, else_branch);
+                self.generate_if_ir(keyword, condition, then_branch, else_branch)
             }
-            AnnotatedStatement::Return(value) => {
-                self.generate_return_ir(value);
+            AnnotatedStatement::Return(value) => self.generate_return_ir(value),
+            AnnotatedStatement::Scope(statements) => self.generate_scope_ir(statements),
+            AnnotatedStatement::Type(descriptor) => {
+                vec![]
             }
-            AnnotatedStatement::Scope(statements) => {
-                self.generate_scope_ir(statements);
-            }
-            AnnotatedStatement::Type(descriptor) => {}
             AnnotatedStatement::Variable(name, value) => {
-                self.generate_variable_decl_ir(name, value);
+                self.generate_variable_decl_ir(name, value)
             }
-            AnnotatedStatement::While(condition, body) => {}
+            AnnotatedStatement::While(condition, body) => {
+                vec![]
+            }
         }
     }
 
     fn is_valid_ir_statement(&self, statement: &AnnotatedStatement) -> bool {
         matches!(
             statement,
-            AnnotatedStatement::Expression(_) |
-                AnnotatedStatement::If(_, _, _, _) |
-                AnnotatedStatement::ForEach(_, _, _) |
-                AnnotatedStatement::Return(_) |
-                AnnotatedStatement::Scope(_) |
-                AnnotatedStatement::While(_, _) |
-                AnnotatedStatement::Variable(_, _)
+            AnnotatedStatement::Expression(_)
+                | AnnotatedStatement::If(_, _, _, _)
+                | AnnotatedStatement::ForEach(_, _, _)
+                | AnnotatedStatement::Return(_)
+                | AnnotatedStatement::Scope(_)
+                | AnnotatedStatement::While(_, _)
+                | AnnotatedStatement::Variable(_, _)
         )
     }
 
-    fn generate_function_ir(&mut self, prototype: &FunctionPrototype, body: &AnnotatedStatement) {
+    fn generate_function_ir(
+        &mut self,
+        prototype: &FunctionPrototype,
+        body: &AnnotatedStatement,
+    ) -> Vec<u8> {
         self.current_chunk = CompileTimeChunk::empty();
+        let mut code = Vec::new();
 
         self.begin_scope();
 
@@ -159,39 +168,56 @@ impl IRGenerator {
 
         if let AnnotatedStatement::Scope(stmts) = body {
             for stmt in stmts {
-                self.generate_ir_for(stmt);
+                let stmt_code = self.generate_ir_for(stmt);
+
+                for byte in stmt_code {
+                    self.emit_byte(&mut code, byte);
+                }
             }
         }
 
         self.end_scope();
 
+        self.current_chunk.code = code.clone();
+
         let ir_function = IRFunction::new(
-            self.top_level_graph.get_id_for_new_edge(prototype.name.clone()),
+            self.top_level_graph
+                .get_id_for_new_edge(prototype.name.clone()),
             self.current_chunk.clone(),
-            prototype.arity as u8
+            prototype.arity as u8,
         );
 
         self.functions.insert(prototype.name.clone(), ir_function);
+
+        code
     }
 
-    fn generate_variable_decl_ir(&mut self, name: &Token, value: &Option<AnnotatedExpression>) {
+    fn generate_variable_decl_ir(
+        &mut self,
+        name: &Token,
+        value: &Option<AnnotatedExpression>,
+    ) -> Vec<u8> {
         self.declare_local(name.lexeme.clone(), true);
+
+        let mut code = Vec::new();
 
         match value {
             Some(v) => {
                 let value_code = self.generate_expr_ir(v);
 
                 for byte in value_code {
-                    self.emit_byte(byte);
+                    self.emit_byte(&mut code, byte);
                 }
 
-                self.emit_instruction(Instruction::SetLocal);
+                self.emit_instruction(&mut code, Instruction::SetLocal);
 
                 // The variable are on top of VM stack after declare with initializer.
-                self.emit_byte(self.get_in_depth(name.lexeme.clone()) as u8);
+                self.emit_byte(&mut code, self.get_in_depth(name.lexeme.clone()) as u8);
             }
             None => {}
         }
+
+        code
     }
 
     fn mark_local_initialized(&mut self, name: String) {}
@@ -211,17 +237,26 @@ impl IRGenerator {
     }
 
     fn declare_local(&mut self, name: String, is_initialized: bool) {
-        self.local_values.push(LocalValue::new(name, self.current_depth, is_initialized));
+        self.local_values
+            .push(LocalValue::new(name, self.current_depth, is_initialized));
     }
 
-    fn generate_scope_ir(&mut self, statements: &[Box<AnnotatedStatement>]) {
+    fn generate_scope_ir(&mut self, statements: &[Box<AnnotatedStatement>]) -> Vec<u8> {
         self.begin_scope();
 
+        let mut code = Vec::new();
+
         for stmt in statements {
-            self.generate_ir_for(stmt);
+            let stmt_code = self.generate_ir_for(stmt);
+
+            for byte in stmt_code {
+                self.emit_byte(&mut code, byte);
+            }
         }
 
         self.end_scope();
+
+        code
     }
 
     fn generate_expr_ir(&mut self, expr: &AnnotatedExpression) -> Vec<u8> {
@@ -234,17 +269,19 @@ impl IRGenerator {
                 self.generate_call_expr_ir(proto, callee, args, kind)
             }
 
+            AnnotatedExpression::CallNative(proto, callee, args, kind) => {
+                self.generate_call_expr_ir(proto, callee, args, kind)
+            }
+
             AnnotatedExpression::Assign(name, value, kind) => {
                 self.generate_assign_expr_ir(name, value, kind)
             }
 
-            AnnotatedExpression::Variable(name, kind) => {
-                self.generate_variable_expr_ir(name, kind)
-            }
+            AnnotatedExpression::Variable(name, kind) => self.generate_variable_expr_ir(name, kind),
 
-            AnnotatedExpression::Literal(token, kind) => { self.generate_literal_ir(token, kind) }
+            AnnotatedExpression::Literal(token, kind) => self.generate_literal_ir(token, kind),
 
-            _ => { Vec::new() }
+            _ => Vec::new(),
         }
     }
 
@@ -253,7 +290,7 @@ impl IRGenerator {
         left: &AnnotatedExpression,
         op: &Token,
         right: &AnnotatedExpression,
-        kind: &TypeDescriptor
+        kind: &TypeDescriptor,
     ) -> Vec<u8> {
         let mut right_bytes = self.generate_expr_ir(left);
         let mut left_bytes = self.generate_expr_ir(right);
@@ -302,7 +339,7 @@ impl IRGenerator {
                         CompileTimeValue::Boolean(false)
                     }
                 }
-                Literal::String => { CompileTimeValue::String(token.lexeme.clone()) }
+                Literal::String => CompileTimeValue::String(token.lexeme.clone()),
                 Literal::Int => CompileTimeValue::Int(token.lexeme.parse::<i32>().unwrap()),
                 Literal::Float => CompileTimeValue::Float(token.lexeme.parse::<f32>().unwrap()),
             }
@@ -315,7 +352,7 @@ impl IRGenerator {
         &mut self,
         name: &Token,
         value: &AnnotatedExpression,
-        kind: &TypeDescriptor
+        kind: &TypeDescriptor,
     ) -> Vec<u8> {
         let mut code = Vec::new();
         let index = self.get_in_depth(name.lexeme.clone());
@@ -376,12 +413,12 @@ impl IRGenerator {
         }
     }
 
-    fn emit_byte(&mut self, byte: u8) {
-        self.current_chunk.write(byte);
+    fn emit_byte(&mut self, code: &mut Vec<u8>, byte: u8) {
+        code.push(byte);
     }
 
-    fn emit_instruction(&mut self, instruction: Instruction) {
-        self.current_chunk.write(instruction.into());
+    fn emit_instruction(&mut self, code: &mut Vec<u8>, instruction: Instruction) {
+        code.push(instruction.into());
     }
 
     fn begin_scope(&mut self) {
@@ -404,14 +441,12 @@ impl IRGenerator {
         vec![Instruction::GetLocal as u8, index as u8]
     }
 
-    fn generate_return_ir(&mut self, value: &AnnotatedExpression) {
-        let code = self.generate_expr_ir(value);
+    fn generate_return_ir(&mut self, value: &AnnotatedExpression) -> Vec<u8> {
+        let mut code = self.generate_expr_ir(value);
 
-        for byte in code {
-            self.emit_byte(byte);
-        }
+        self.emit_instruction(&mut code, Instruction::Ret);
 
-        self.emit_instruction(Instruction::Ret);
+        code
     }
 
     fn generate_call_expr_ir(
@@ -419,7 +454,7 @@ impl IRGenerator {
         proto: &FunctionPrototype,
         callee: &Token,
         args: &[Box<AnnotatedExpression>],
-        kind: &TypeDescriptor
+        kind: &TypeDescriptor,
     ) -> Vec<u8> {
         let mut code = Vec::new();
         let function_table_index = self.top_level_graph.get_function_id(&proto.name);
@@ -448,13 +483,68 @@ impl IRGenerator {
         keyword: &Token,
         condition: &AnnotatedExpression,
         then_branch: &AnnotatedStatement,
-        else_branch: &Option<Box<AnnotatedStatement>>
-    ) {
+        else_branch: &Option<Box<AnnotatedStatement>>,
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
         let mut condition_code = self.generate_expr_ir(condition);
+
+        for byte in condition_code {
+            self.emit_byte(&mut code, byte);
+        }
+
+        let then_branch_code = self.generate_ir_for(then_branch);
+
+        self.emit_instruction(&mut code, Instruction::JFalse);
+
+        let offset: (u8, u8, u8, u8) = self.split_u32(then_branch_code.len() as u32);
+        self.emit_byte(&mut code, offset.0);
+        self.emit_byte(&mut code, offset.1);
+        self.emit_byte(&mut code, offset.2);
+        self.emit_byte(&mut code, offset.3);
+
+        for byte in then_branch_code {
+            self.emit_byte(&mut code, byte);
+        }
+
+        if let Some(else_branch_code) = else_branch {
+            let else_body_code = self.generate_ir_for(else_branch_code);
+            self.emit_instruction(&mut code, Instruction::Jump);
+
+            let offset = self.split_u32(else_body_code.len() as u32);
+            self.emit_byte(&mut code, offset.0);
+            self.emit_byte(&mut code, offset.1);
+            self.emit_byte(&mut code, offset.2);
+            self.emit_byte(&mut code, offset.3);
+
+            for byte in else_body_code {
+                self.emit_byte(&mut code, byte);
+            }
+        }
+
+        code
     }
 
     fn get_current_chunk_offset(&self) -> usize {
         self.current_chunk.code.len()
+    }
+
+    fn generate_standard_native_functions(&mut self) {
+        let id = self
+            .top_level_graph
+            .get_id_for_new_edge("print".to_string());
+
+        self.current_chunk = CompileTimeChunk::empty();
+
+        let mut code = Vec::new();
+
+        self.emit_instruction(&mut code, Instruction::Print);
+
+        self.current_chunk.code = code;
+
+        self.functions.insert(
+            "print".to_string(),
+            IRFunction::new(id, self.current_chunk.clone(), 1),
+        );
     }
 }
 
@@ -480,20 +570,26 @@ impl IRFunction {
 
 #[derive(Debug, Clone)]
 pub struct CodeGraph {
-    connections: HashMap<String, u32>,
-    current_id: u32,
+    pub connections: HashMap<String, u32>,
+    pub inverse_connections: HashMap<u32, String>,
+    pub current_id: u32,
 }
 
 impl CodeGraph {
     pub fn new(connections: HashMap<String, u32>) -> Self {
-        Self { connections, current_id: 0 }
+        Self {
+            connections,
+            inverse_connections: HashMap::new(),
+            current_id: 0,
+        }
     }
 
     pub fn get_id_for_new_edge(&mut self, name: String) -> u32 {
         let id = self.current_id;
         self.current_id += 1;
 
-        self.connections.insert(name, id);
+        self.connections.insert(name.clone(), id);
+        self.inverse_connections.insert(id, name);
 
         return id;
     }
@@ -514,8 +610,12 @@ impl IntermediateCode {
     pub fn new(
         functions: HashMap<String, IRFunction>,
         kinds: HashMap<String, IRType>,
-        graph: CodeGraph
+        graph: CodeGraph,
     ) -> Self {
-        Self { functions, kinds, graph }
+        Self {
+            functions,
+            kinds,
+            graph,
+        }
     }
 }

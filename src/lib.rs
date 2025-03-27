@@ -1,7 +1,11 @@
 pub mod command;
 pub mod compiler;
+pub mod runtime;
 
-use std::{ fs, io::{ self, Read } };
+use std::{
+    fs,
+    io::{self, Read},
+};
 
 pub fn read_file_without_bom(path: &str) -> io::Result<String> {
     let mut file = fs::File::open(path)?;

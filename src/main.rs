@@ -1,6 +1,6 @@
-use std::{ env, process };
+use std::{env, process};
 
-use gppvm::command::{ self, CommandlineArguments };
+use gppvm::command::{self, CommandlineArguments};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");

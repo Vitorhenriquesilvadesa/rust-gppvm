@@ -261,7 +261,7 @@ impl Lexer {
                 if self.try_eat('/') {
                     self.comment();
                 } else {
-                    self.make_token(TokenKind::Punctuation(PunctuationKind::Slash))
+                    self.make_token(TokenKind::Operator(OperatorKind::Slash))
                 }
             }
             ',' => self.make_token(TokenKind::Punctuation(PunctuationKind::Comma)),

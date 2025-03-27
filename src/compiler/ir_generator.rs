@@ -118,7 +118,9 @@ impl IRGenerator {
                 self.generate_function_ir(prototype, body);
             }
             AnnotatedStatement::Global => {}
-            AnnotatedStatement::If(keyword, condition, then_branch, else_branch) => {}
+            AnnotatedStatement::If(keyword, condition, then_branch, else_branch) => {
+                self.generate_if_ir(keyword, condition, then_branch, else_branch);
+            }
             AnnotatedStatement::Return(value) => {
                 self.generate_return_ir(value);
             }
@@ -253,8 +255,8 @@ impl IRGenerator {
         right: &AnnotatedExpression,
         kind: &TypeDescriptor
     ) -> Vec<u8> {
-        let mut left_bytes = self.generate_expr_ir(right);
         let mut right_bytes = self.generate_expr_ir(left);
+        let mut left_bytes = self.generate_expr_ir(right);
         let mut operator = self.convert_operator_to_instruction(op) as u8;
 
         let mut all_bytes: Vec<u8> = Vec::new();
@@ -439,6 +441,20 @@ impl IRGenerator {
         code.push(proto.arity as u8);
 
         code
+    }
+
+    fn generate_if_ir(
+        &mut self,
+        keyword: &Token,
+        condition: &AnnotatedExpression,
+        then_branch: &AnnotatedStatement,
+        else_branch: &Option<Box<AnnotatedStatement>>
+    ) {
+        let mut condition_code = self.generate_expr_ir(condition);
+    }
+
+    fn get_current_chunk_offset(&self) -> usize {
+        self.current_chunk.code.len()
     }
 }
 

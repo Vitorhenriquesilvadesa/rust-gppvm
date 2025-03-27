@@ -176,9 +176,9 @@ impl IRGenerator {
             }
         }
 
-        self.end_scope();
-
         self.current_chunk.code = code.clone();
+
+        self.end_scope();
 
         let ir_function = IRFunction::new(
             self.top_level_graph
@@ -426,10 +426,18 @@ impl IRGenerator {
     }
 
     fn end_scope(&mut self) {
+        let mut count = 0;
         for value in self.local_values.values.iter().rev() {
             if value.depth < self.current_depth {
                 break;
             }
+
+            self.current_chunk.code.push(Instruction::Pop as u8);
+            count += 1;
+        }
+
+        for i in 0..count {
+            self.local_values.values.pop();
         }
 
         self.current_depth -= 1;

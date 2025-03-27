@@ -5,6 +5,7 @@ def add(a: number, b: int) -> number {
 def main() -> int {
     if 1 > 2 {
         add(2, 3);
+        add(2, 3);
     } else {
         print(2);
     }

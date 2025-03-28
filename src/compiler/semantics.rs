@@ -401,7 +401,7 @@ pub enum AnnotatedStatement {
     Type(TypeDescriptor),
     Function(FunctionPrototype, Box<AnnotatedStatement>),
     Scope(Vec<Box<AnnotatedStatement>>),
-    Return(AnnotatedExpression),
+    Return(Option<AnnotatedExpression>),
     Decorator(Token, Vec<AnnotatedExpression>),
     Expression(AnnotatedExpression),
     While(AnnotatedExpression, Box<AnnotatedStatement>),
@@ -432,7 +432,7 @@ impl SemanticAnalyzer {
             reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
             void_instance: TypeDescriptor::empty(),
         };
-        let archetypes = HashSet::new();
+        let mut archetypes = HashSet::new();
         let fields = HashMap::new();
 
         analyzer.void_instance = TypeDescriptor::new("void".to_string(), archetypes, fields, 0);
@@ -480,7 +480,7 @@ impl SemanticAnalyzer {
         self.create_and_define_type("tuple", vec!["iterator"]);
         self.create_and_define_type("list", vec!["iterator"]);
 
-        let kind = self.get_by_archetype(&[Archetype::new("object".to_string())]).unwrap();
+        let kind = self.get_void_instance();
 
         self.create_and_define_function(
             "print",
@@ -770,6 +770,14 @@ impl SemanticAnalyzer {
                             Value::Internal,
                             name.line
                         );
+
+                        if value.kind.as_ref().unwrap().name == "void" {
+                            gpp_error!(
+                                "Cannot initialize variable with 'void' value. At line {}.",
+                                name.line
+                            );
+                        }
+
                         let mut context = &mut self.context();
                         context.declare_name(&name.lexeme, value);
                         AnnotatedStatement::Variable(name.clone(), Some(annotated_value))
@@ -1655,6 +1663,16 @@ impl SemanticAnalyzer {
                 let value_type = self.resolve_expr_type(&expression);
                 let symbol_type = sv.kind;
 
+                if let Some(kind) = &symbol_type {
+                    if kind.name == "void" {
+                        gpp_error!("Cannot assign 'void' to variables. At line {}.", token.line);
+                    }
+                }
+
+                if value_type.name == "void" {
+                    gpp_error!("Cannot assign 'void' to variables. At line {}.", token.line);
+                }
+
                 match symbol_type {
                     Some(kind) => {
                         if kind.id != value_type.id {
@@ -2078,7 +2096,7 @@ impl SemanticAnalyzer {
                         prototype.return_kind.clone()
                     )
                 }
-                None =>
+                None => {
                     match self.get_native_function(&name.lexeme.clone()) {
                         Some(prototype) => {
                             let prototype = prototype.clone();
@@ -2103,11 +2121,13 @@ impl SemanticAnalyzer {
 
                         None => {
                             gpp_error!(
-                                "Function '{}' are not declared in this scope.",
-                                name.lexeme.clone()
+                                "Function '{}' are not declared in this scope. At line {}.",
+                                name.lexeme.clone(),
+                                name.line
                             )
                         }
                     }
+                }
             }
         } else {
             gpp_error!("Call functions inside modules are currently not allowed.");
@@ -2154,7 +2174,11 @@ impl SemanticAnalyzer {
         args: &Vec<Expression>
     ) -> TypeDescriptor {
         if let Expression::Variable(name) = callee {
-            let function = self.symbol_table.get_function(&name.lexeme.clone());
+            let mut function = self.symbol_table.get_function(&name.lexeme.clone());
+
+            if let None = function {
+                function = self.symbol_table.native_functions.get_mut(&name.lexeme);
+            }
 
             match function {
                 Some(prototype) => {
@@ -2357,6 +2381,10 @@ impl SemanticAnalyzer {
     fn resolve_type_composition(&mut self, mask: &Vec<Token>) -> TypeDescriptor {
         let mut archetypes = HashSet::<Archetype>::new();
 
+        if mask[0].lexeme == "void" {
+            return self.get_void_instance();
+        }
+
         archetypes.insert(Archetype::new("object".to_string()));
 
         for name in mask {
@@ -2391,7 +2419,7 @@ impl SemanticAnalyzer {
     ///
     /// # Errors
     /// - Raises an error if the return statement is outside a function or if the return type does not match the function's signature.
-    fn analyze_return(&mut self, value: &Expression) -> AnnotatedStatement {
+    fn analyze_return(&mut self, value: &Option<Expression>) -> AnnotatedStatement {
         self.require_depth(
             Ordering::Greater,
             0,
@@ -2403,20 +2431,35 @@ impl SemanticAnalyzer {
         }
 
         let function = self.current_symbol.clone();
-        let return_kind = self.get_function(&function).unwrap().clone();
+        let function_signature = self.get_function(&function).unwrap().clone();
 
-        let annotated_value = self.analyze_expr(value);
+        match value {
+            Some(v) => {
+                let annotated_value = self.analyze_expr(v);
 
-        self.assert_archetype_kind(
-            value,
-            return_kind.return_kind.clone(),
-            format!(
-                "Return of '{}' does not match with function signature.",
-                function.clone()
-            ).as_str()
-        );
+                self.assert_archetype_kind(
+                    v,
+                    function_signature.return_kind.clone(),
+                    format!(
+                        "Return of '{}' does not match with function signature.",
+                        function.clone()
+                    ).as_str()
+                );
 
-        AnnotatedStatement::Return(annotated_value)
+                AnnotatedStatement::Return(Some(annotated_value))
+            }
+            None => {
+                if function_signature.return_kind.name != "void" {
+                    gpp_error!(
+                        "Cannot return void from '{}' because it's require '{}' instance.",
+                        function,
+                        function_signature.return_kind.name
+                    );
+                }
+
+                return AnnotatedStatement::Return(None);
+            }
+        }
     }
 
     /// Asserts that two types are equal.

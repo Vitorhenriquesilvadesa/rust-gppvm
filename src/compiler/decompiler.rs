@@ -1,7 +1,7 @@
 use super::{
     chunk::CompileTimeChunk,
     instructions::Instruction,
-    ir_generator::{IRFunction, IntermediateCode},
+    ir_generator::{ IRFunction, IntermediateCode },
 };
 
 pub struct Decompiler {}
@@ -12,11 +12,7 @@ impl Decompiler {
             let width = 60;
             println!(
                 "{}",
-                format!(
-                    "{:=^1$}",
-                    format!(" {} (arity = {}) ", name, function.arity),
-                    width
-                )
+                format!("{:=^1$}", format!(" {} (arity = {}) ", name, function.arity), width)
             );
             Decompiler::decompile_function(function, code);
             println!("{}", "=".repeat(width));
@@ -47,25 +43,23 @@ impl Decompiler {
         match Instruction::try_from(code[*index]) {
             Ok(instruction) => {
                 let instruction_name = format!("{:?}", instruction).to_lowercase();
-                let padded_instruction = format!("{:<20}", instruction_name);
-                let instr_index = format!("0x{:02X}", instruction as u8);
+                let padded_instruction = format!("{:<10}", instruction_name);
+                let instr_index = format!("{:02}", index);
 
                 match instruction {
                     Instruction::Push => {
                         let pos = Decompiler::combine_u8_to_u16(code[*index + 1], code[*index + 2]);
                         println!(
                             "{}  {} {}   ; {:?}",
-                            instr_index, padded_instruction, pos, chunk.constants[pos as usize]
+                            instr_index,
+                            padded_instruction,
+                            pos,
+                            chunk.constants[pos as usize]
                         );
                         *index += 2;
                     }
                     Instruction::GetLocal | Instruction::SetLocal => {
-                        println!(
-                            "{}  {} {}",
-                            instr_index,
-                            padded_instruction,
-                            code[*index + 1]
-                        );
+                        println!("{}  {} {}", instr_index, padded_instruction, code[*index + 1]);
                         *index += 1;
                     }
 
@@ -74,7 +68,7 @@ impl Decompiler {
                             code[*index + 1],
                             code[*index + 2],
                             code[*index + 3],
-                            code[*index + 4],
+                            code[*index + 4]
                         );
 
                         let arity = code[*index + 5];
@@ -95,7 +89,7 @@ impl Decompiler {
                             code[*index + 1],
                             code[*index + 2],
                             code[*index + 3],
-                            code[*index + 4],
+                            code[*index + 4]
                         );
 
                         println!("{}  {}     ; {}", instr_index, padded_instruction, offset);

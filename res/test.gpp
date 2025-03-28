@@ -1,12 +1,19 @@
 def add(a: number, b: int) -> number {
-    return a + b;
+    let value = a + b;
+    return value;
 }
 
-def main() -> int {
+def main() -> void {
     if 1 > 2 {
-        add(2, 3);
-        add(2, 3);
+        let a = 5.5555;
+        let b = add(2, 3);
     } else {
+        let a = 2;
         print(2);
+
+        return;
     }
+
+    let b = 2;
+    return;
 }

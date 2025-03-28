@@ -12,7 +12,7 @@ pub enum Statement {
     Match,
     Scope(Vec<Rc<Statement>>),
     Import(Token),
-    Return(Expression),
+    Return(Option<Expression>),
     // endregion:  --- Statements
 
     // region:  --- Declarations

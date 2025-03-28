@@ -857,7 +857,11 @@ impl Parser {
     }
 
     fn return_statement(&mut self) -> Result<Statement, ParseError> {
-        let value = Statement::Return(self.expression()?);
+        if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::SemiColon)]) {
+            return Ok(Statement::Return(None));
+        }
+
+        let value = Statement::Return(Some(self.expression()?));
 
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),

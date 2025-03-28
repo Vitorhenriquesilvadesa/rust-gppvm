@@ -1,4 +1,4 @@
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use num_enum::{ IntoPrimitive, TryFromPrimitive };
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
@@ -58,4 +58,6 @@ pub enum Instruction {
     Constant,
     Call,
     Print,
+    Halt,
+    Void,
 }

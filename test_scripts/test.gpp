@@ -1,9 +1,0 @@
-#[pragma("sync")]
-native def print(x: object) -> void;
-native def mod(x: number) -> number;
-native def abort() -> void;
-native def str(x: object) -> str;
-
-def main() -> void {
-    print("Hello World");
-}

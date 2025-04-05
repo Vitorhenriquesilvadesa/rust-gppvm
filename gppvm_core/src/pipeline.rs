@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use std::path::PathBuf;
 
+use shared_components::CompilerErrorStack;
+
 use crate::{ context::CompilerContext, Stage };
 
 pub struct CompilationPipeline {
@@ -24,27 +26,17 @@ impl CompilationPipeline {
         self
     }
 
-    pub fn execute(&mut self) {
+    pub fn execute(&mut self) -> Result<(), CompilerErrorStack> {
         for stage in &mut self.stages {
             println!("Running {} pass...", stage.get_name());
             stage.run(&mut self.context);
 
             if self.context.reporter.borrow().has_errors() {
-                for error in self.context.reporter.borrow().get_errors() {
-                    match error.line {
-                        None => {
-                            println!("ERROR: {}.", error.msg);
-                        }
-
-                        Some(line) => {
-                            println!("ERROR: {}. At line {}.", error.msg, line);
-                        }
-                    }
-                }
-
-                return;
+                return Err(self.context.reporter.borrow().get_errors().clone());
             }
         }
+
+        Ok(())
     }
 
     pub fn with_source(mut self, source: String) -> Self {

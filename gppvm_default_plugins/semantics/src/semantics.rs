@@ -2,7 +2,6 @@
 
 use std::{ cell::RefCell, cmp::Ordering, collections::{ HashMap, HashSet }, fmt::Display, rc::Rc };
 use gppvm_core::{ CompilerContext, Stage, StageKind };
-use parser::*;
 
 use shared_components::{
     *,
@@ -327,7 +326,12 @@ impl SemanticAnalyzer {
         match self.get_function("main") {
             None =>
                 self.report_error(
-                    CompilationError::new("Missing 'main' function.".to_string(), None)
+                    CompilationError::new(
+                        CompilerMessage::new(Severity::Error).append(
+                            "Missing 'main' function.".to_string()
+                        ),
+                        None
+                    )
                 ),
             Some(f) => {
                 if f.arity != 0 {
@@ -401,7 +405,12 @@ impl SemanticAnalyzer {
             kind = self.get_static_kind("void");
 
             self.report_error(
-                CompilationError::new("Missing function return kind.".to_string(), Some(name.line))
+                CompilationError::new(
+                    CompilerMessage::new(Severity::Error).append(
+                        "Missing function return kind.".to_string()
+                    ),
+                    Some(name.line)
+                )
             );
         }
 
@@ -609,9 +618,11 @@ impl SemanticAnalyzer {
                 if type_fields.contains_key(&field.name.lexeme) {
                     self.report_error(
                         CompilationError::new(
-                            format!(
-                                "Field '{}' already declared at this point.",
-                                field.name.lexeme
+                            CompilerMessage::new(Severity::Error).append(
+                                format!(
+                                    "Field '{}' already declared at this point.",
+                                    field.name.lexeme
+                                )
                             ),
                             Some(field.name.line)
                         )
@@ -651,11 +662,6 @@ impl SemanticAnalyzer {
     /// - `descriptor`: The `TypeDescriptor` containing information about the type to be defined,
     /// including the type's name and other related details.
     ///
-    /// # Examples
-    /// ```rust
-    /// let descriptor = TypeDescriptor::new("MyType");
-    /// analyzer.define_type(descriptor);
-    /// ```
     ///
     /// # Panics
     /// This function may panic if the type is already defined in the symbol table.
@@ -712,7 +718,12 @@ impl SemanticAnalyzer {
             kind = self.get_static_kind("void");
 
             self.report_error(
-                CompilationError::new("Missing function return kind.".to_string(), Some(name.line))
+                CompilationError::new(
+                    CompilerMessage::new(Severity::Error).append(
+                        "Missing function return kind.".to_string()
+                    ),
+                    Some(name.line)
+                )
             );
         }
 
@@ -774,7 +785,12 @@ impl SemanticAnalyzer {
         let comparison_result = self.depth().cmp(&depth);
 
         if comparison_result != comparator {
-            self.report_error(CompilationError::new(format!("{}", message), None));
+            self.report_error(
+                CompilationError::new(
+                    CompilerMessage::new(Severity::Error).append(format!("{}", message)),
+                    None
+                )
+            );
         }
     }
 
@@ -904,7 +920,9 @@ impl SemanticAnalyzer {
             _ =>
                 self.report_error(
                     CompilationError::new(
-                        format!("Statement {:?} is not allowed here.", body),
+                        CompilerMessage::new(Severity::Error).append(
+                            format!("Statement {:?} is not allowed here.", body)
+                        ),
                         None
                     )
                 ),
@@ -1911,11 +1929,6 @@ impl SemanticAnalyzer {
     /// # Parameters
     /// - `name`: The name of the function being defined.
     /// - `value`: The `FunctionPrototype` representing the function's signature.
-    ///
-    /// # Example
-    /// ```rust
-    /// define_function("my_function".to_string(), my_function_prototype);
-    /// ```
     fn define_function(&mut self, name: String, value: FunctionPrototype) {
         self.symbol_table.define_function(name, value);
     }
@@ -2004,11 +2017,7 @@ impl SemanticAnalyzer {
     /// # Returns
     /// - An `Option<&mut FunctionPrototype>` containing a mutable reference to the function's prototype
     ///   if it exists, or `None` if the function is not defined.
-    ///
-    /// # Example
-    /// ```rust
-    /// let function = get_function("my_function");
-    /// ```
+
     fn get_function(&mut self, name: &str) -> Option<&mut FunctionPrototype> {
         self.symbol_table.get_function(name)
     }
@@ -2086,11 +2095,6 @@ impl SemanticAnalyzer {
     ///
     /// # Returns
     /// - An `Option<TypeDescriptor>` representing the matching type, or `None` if no match is found.
-    ///
-    /// # Example
-    /// ```rust
-    /// let result = get_by_archetype(&[Archetype::new("object".to_string())]);
-    /// ```
     fn get_by_archetype(&mut self, sets: &[Archetype]) -> Option<TypeDescriptor> {
         let target_set: HashSet<_> = sets.iter().cloned().collect();
 
@@ -2363,11 +2367,6 @@ impl SemanticAnalyzer {
     /// # Returns
     /// - An `AnnotatedExpression::Get` that represents the field access expression, including the
     ///   base expression, the field's token, and the resolved type of the field.
-    ///
-    /// # Example
-    /// ```rust
-    /// let expr = analyze_get_expr(&expression, token);
-    /// ```
     fn analyze_get_expr(&mut self, expression: &Expression, token: Token) -> AnnotatedExpression {
         AnnotatedExpression::Get(
             Box::new(self.analyze_expr(expression)),
@@ -2444,11 +2443,6 @@ impl SemanticAnalyzer {
     /// # Returns
     /// - An `Option<FunctionPrototype>` that represents the native function's prototype, or `None`
     ///   if the function is not found.
-    ///
-    /// # Example
-    /// ```rust
-    /// let native_fn = get_native_function("print");
-    /// ```
     fn get_native_function(&self, name: &str) -> Option<&FunctionPrototype> {
         self.symbol_table.native_functions.get(name)
     }

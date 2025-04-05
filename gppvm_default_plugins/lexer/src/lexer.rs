@@ -6,6 +6,8 @@ use shared_components::{
     token::*,
     util::create_keywords,
     CompilationError,
+    CompilerMessage,
+    Severity,
 };
 
 #[derive(Debug)]
@@ -180,8 +182,8 @@ impl Lexer {
                     self.make_token(TokenKind::Operator(OperatorKind::Equal));
                 }
             }
-            '"' => self.string('"').expect("Error in string."),
-            '\'' => self.string('\'').expect("Error in string."),
+            '"' => self.string('"'),
+            '\'' => self.string('\''),
             '.' => self.make_token(TokenKind::Punctuation(PunctuationKind::Dot)),
 
             _ =>
@@ -200,7 +202,9 @@ impl Lexer {
                             .borrow_mut()
                             .report_error(
                                 CompilationError::new(
-                                    format!("Invalid character '{}' at line {}", c, self.line),
+                                    CompilerMessage::new(Severity::Error).append(
+                                        format!("Invalid character '{}' at line {}", c, self.line)
+                                    ),
                                     Some(self.line)
                                 )
                             );
@@ -262,8 +266,12 @@ impl Lexer {
         (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
     }
 
-    fn string(&mut self, end: char) -> Result<(), String> {
+    fn string(&mut self, end: char) {
         loop {
+            if self.is_at_end() {
+                break;
+            }
+
             let c = self.peek();
 
             if c == end {
@@ -279,7 +287,18 @@ impl Lexer {
         }
 
         if self.is_at_end() {
-            return Err(format!("Unterminated string at line {}.", self.line));
+            self.reporter
+                .borrow_mut()
+                .report_error(
+                    CompilationError::new(
+                        CompilerMessage::new(Severity::Error).append(
+                            format!("Unterminated string")
+                        ),
+                        Some(self.line)
+                    )
+                );
+
+            return;
         }
 
         self.advance();
@@ -288,8 +307,6 @@ impl Lexer {
             .iter()
             .collect();
         self.make_token_with_lexeme(TokenKind::Literal(Literal::String), value);
-
-        Ok(())
     }
 
     fn make_token(&mut self, kind: TokenKind) {

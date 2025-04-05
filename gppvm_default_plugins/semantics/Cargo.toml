@@ -3,8 +3,10 @@ name = "semantics"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+doctest = false
+
 [dependencies]
 shared_components = { path = "../../shared_components" }
 gppvm_core = { path = "../../gppvm_core" }
-
 parser = { path = "../parser" }

@@ -40,6 +40,9 @@ The compiler and VM are composed of well-defined, interchangeable stages. Each s
 Project configuration determines which plugins are active for each compilation step.
 
 ---
+👉 See the full [0.1.0 TODO progress](TODO.md)
+
+---
 
 ## 📦 Getting Started
 

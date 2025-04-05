@@ -36,5 +36,3 @@ Here’s an overview of the current implementation progress:
 - [ ] Bytecode Format Specification
 - [ ] Plugin Development Guide
 - [ ] Example Programs
-
-👉 See the full [0.1.0 TODO progress](TODO.md)

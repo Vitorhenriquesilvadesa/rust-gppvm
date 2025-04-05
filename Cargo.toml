@@ -1,7 +1,16 @@
-[package]
-name = "gppvm"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "gppvm",
+    "gppvm_core",
+    "gppvm_default_plugins/generator",
+    "gppvm_default_plugins/intermediate",
+    "gppvm_default_plugins/lexer",
+    "gppvm_default_plugins/parser",
+    "gppvm_default_plugins/semantics",
+    "gppvm_plugin_loader",
+    "gppvm_runtime",
+    "gppvm_toolkit",
+    "shared_components",
+]
 
-[dependencies]
-num_enum = "0.7"
+resolver = "1"

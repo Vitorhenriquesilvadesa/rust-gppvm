@@ -1,19 +1,9 @@
-def add(a: number, b: int) -> number {
-    let value = a + b;
-    return value;
-}
+#[pragma("sync")]
+native def print(x: object) -> void;
+native def mod(x: number) -> number;
+native def abort() -> void;
+native def str(x: object) -> str;
 
 def main() -> void {
-    if 1 > 2 {
-        let a = 5.5555;
-        let b = add(2, 3);
-    } else {
-        let a = 2;
-        print(2);
-
-        return;
-    }
-
-    let b = 2;
-    return;
+    print("Hello World");
 }

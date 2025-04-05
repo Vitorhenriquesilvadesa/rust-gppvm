@@ -1,0 +1,11 @@
+[package]
+name = "intermediate"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+num_enum = "0.7"
+semantics = { path = "../semantics" }
+shared_components = { path = "../../shared_components" }
+parser = { path = "../parser" }
+lexer = { path = "../lexer" }

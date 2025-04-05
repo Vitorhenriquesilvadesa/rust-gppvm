@@ -10,11 +10,8 @@ Here’s an overview of the current implementation progress:
 - [x] Parser
 - [x] Semantic Analyzer
 - [x] Archetype-based Type System
-- [ ] Generic Type Support
-- [ ] Type Specialization for Generics
 - [ ] IR Generator
 - [ ] Bytecode Emitter
-- [ ] Optimizer
 
 ### Virtual Machine
 - [ ] Stack-Based Architecture
@@ -22,7 +19,7 @@ Here’s an overview of the current implementation progress:
 - [ ] Built-in Object System
 - [ ] Garbage Collector
 - [ ] Debugger / Stack Traces
-- [ ] Standard Library (WIP)
+- [ ] Minimal Standard Library
 
 ### Tooling
 - [ ] Plugin Loader System

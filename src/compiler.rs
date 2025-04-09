@@ -8,10 +8,12 @@ mod semantics;
 mod statements;
 mod expressions;
 mod ir_generator;
+mod bytecode_gen;
 mod ast;
 mod chunk;
 mod decompiler;
 
+use bytecode_gen::BytecodeGenerator;
 use decompiler::Decompiler;
 use errors::CompilerErrorReporter;
 use ir_generator::IRGenerator;
@@ -100,6 +102,10 @@ impl Compiler {
         println!("{:#?}", ir_code);
 
         Decompiler::decompile(&ir_code);
+
+        let bytecode_generator = BytecodeGenerator::new();
+
+        let bytecode = bytecode_generator.generate(&ir_code);
 
         for error in self.reporter.borrow().get_errors() {
             eprintln!("Error: {} At line {:?}.", error.msg, error.line);

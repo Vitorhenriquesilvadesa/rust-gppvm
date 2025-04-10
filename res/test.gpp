@@ -1,10 +1,13 @@
-def say_hello() -> void {
-    print("Hello World");
+def factorial(x: int) -> int {
+    let result = 1;
+    while x > 0 {
+        result = result * x;
+        x--;
+    }
+
+    return result;
 }
 
 def main() -> void {
-    let x = 2;
-    let y = 3;
-    print(x);
-    say_hello();
+    print(factorial(factorial(3)));
 }

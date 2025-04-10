@@ -47,8 +47,10 @@ pub enum Instruction {
     Get,
     Set,
     Jump,
-    JLF,
+    JTrue,
     JFalse,
+    Loop,
+    IncrementLocal,
     Raise,
     CatchError,
     True,
@@ -60,4 +62,5 @@ pub enum Instruction {
     Print,
     Halt,
     Void,
+    DecrementLocal,
 }

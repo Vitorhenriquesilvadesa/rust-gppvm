@@ -44,6 +44,8 @@ pub enum OperatorKind {
     Equal,
     Not,
     Arrow,
+    PostFixIncrement,
+    PostFixDecrement,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -236,10 +238,18 @@ impl Lexer {
             ')' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightParen)),
             '{' => self.make_token(TokenKind::Punctuation(PunctuationKind::LeftBrace)),
             '}' => self.make_token(TokenKind::Punctuation(PunctuationKind::RightBrace)),
-            '+' => self.make_token(TokenKind::Operator(OperatorKind::Plus)),
+            '+' => {
+                if self.try_eat('+') {
+                    self.make_token(TokenKind::Operator(OperatorKind::PostFixIncrement))
+                } else {
+                    self.make_token(TokenKind::Operator(OperatorKind::Plus))
+                }
+            }
             '-' => {
                 if self.try_eat('>') {
                     self.make_token(TokenKind::Operator(OperatorKind::Arrow))
+                } else if self.try_eat('-') {
+                    self.make_token(TokenKind::Operator(OperatorKind::PostFixDecrement))
                 } else {
                     self.make_token(TokenKind::Operator(OperatorKind::Minus))
                 }

@@ -93,7 +93,9 @@ impl Compiler {
         self.lexer.reset_internal_state(source);
 
         let tokens = self.lexer.scan_tokens(Rc::clone(&self.reporter));
+
         let stmts = self.parser.parse(Rc::clone(&self.reporter), tokens.clone());
+
         let semantic_code = self.semantic_analyzer.analyze(
             Rc::clone(&self.reporter),
             stmts.clone()

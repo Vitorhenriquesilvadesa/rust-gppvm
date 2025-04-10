@@ -6,6 +6,7 @@ use super::lexer::Token;
 pub enum Expression {
     Literal(Token),
     Unary(Token, Rc<Expression>),
+    PostFix(Token, Rc<Expression>),
     Arithmetic(Rc<Expression>, Token, Rc<Expression>),
     Logical(Rc<Expression>, Token, Rc<Expression>),
     Ternary(Rc<Expression>, Rc<Expression>, Rc<Expression>),
@@ -28,6 +29,7 @@ impl Display for Expression {
         match self {
             Expression::Literal(token) => write!(f, "{}", token),
             Expression::Unary(op, expr) => write!(f, "({} {})", op, expr),
+            Expression::PostFix(op, var) => write!(f, "({} {})", op.lexeme, var),
             Expression::Arithmetic(left, op, right) => write!(f, "({} {} {})", left, op, right),
             Expression::Logical(left, op, right) => write!(f, "({} {} {})", left, op, right),
             Expression::Ternary(cond, then_expr, else_expr) => {

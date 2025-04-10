@@ -391,6 +391,7 @@ pub enum AnnotatedExpression {
     TypeComposition(TypeDescriptor),
     Attribute(Token, Vec<Box<AnnotatedExpression>>),
     Void,
+    PostFix(Token, Box<AnnotatedExpression>),
 }
 
 #[derive(Debug, Clone)]
@@ -653,6 +654,7 @@ impl SemanticAnalyzer {
             Statement::ForEach(variable, condition, body) => {
                 self.analyze_iterator(variable, condition, &body)
             }
+            Statement::While(condition, body) => { self.analyze_while_stmt(condition, body) }
             Statement::If(keyword, condition, body, else_branch) => {
                 self.analyze_if_stmt(keyword, condition, &body, else_branch)
             }
@@ -1176,6 +1178,20 @@ impl SemanticAnalyzer {
                             Some(Box::new(AnnotatedStatement::Scope(annotated_else)))
                         )
                     }
+                    Statement::If(keyword, condition, body, else_branch) => {
+                        let annotated_else_branch = self.analyze_if_stmt(
+                            keyword,
+                            condition,
+                            body,
+                            else_branch
+                        );
+                        AnnotatedStatement::If(
+                            keyword.clone(),
+                            annotated_condition,
+                            Box::new(AnnotatedStatement::Scope(annotated_body)),
+                            Some(Box::new(annotated_else_branch))
+                        )
+                    }
                     _ => gpp_error!("Statement {:?} is not allowed here.", stmt),
                 }
 
@@ -1230,6 +1246,9 @@ impl SemanticAnalyzer {
         match expr.clone() {
             Expression::Void => AnnotatedExpression::Void,
             Expression::Literal(token) => self.analyze_literal(token),
+            Expression::PostFix(operator, variable) => {
+                self.analyze_postfix_expr(&operator, &variable)
+            }
             Expression::Unary(token, expression) => self.analyze_unary_expr(token, &expression),
             Expression::Arithmetic(left, op, right) => {
                 self.analyze_arithmetic_expr(&left, &op, &right)
@@ -2682,5 +2701,53 @@ impl SemanticAnalyzer {
     /// ```
     fn get_native_function(&self, name: &str) -> Option<&FunctionPrototype> {
         self.symbol_table.native_functions.get(name)
+    }
+
+    fn analyze_while_stmt(
+        &mut self,
+        condition: &Expression,
+        body: &Statement
+    ) -> AnnotatedStatement {
+        let annotated_condition = self.analyze_expr(condition);
+
+        let kind = self.resolve_expr_type(condition);
+        kind.implements_archetype(&Archetype::new("bool".to_string()));
+
+        let mut annotated_body: Vec<Box<AnnotatedStatement>> = Vec::new();
+
+        match body {
+            Statement::Scope(statements) => {
+                for stmt in statements {
+                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                }
+            }
+
+            _ => {
+                gpp_error!("Only scopes are allowed inside 'while' loop.");
+            }
+        }
+
+        AnnotatedStatement::While(
+            annotated_condition,
+            Box::new(AnnotatedStatement::Scope(annotated_body))
+        )
+    }
+
+    fn analyze_postfix_expr(
+        &mut self,
+        operator: &Token,
+        variable: &Expression
+    ) -> AnnotatedExpression {
+        if let Expression::Variable(name) = variable {
+            let kind = self.resolve_identifier_type(name);
+
+            if !kind.implements_archetype(&Archetype::new("int".to_string())) {
+                gpp_error!("Only 'int' instances can be incremented with postfix operators.");
+            }
+
+            AnnotatedExpression::PostFix(operator.clone(), Box::new(self.analyze_expr(variable)))
+        } else {
+            gpp_error!("Only variables can use postfix operators.");
+        }
     }
 }

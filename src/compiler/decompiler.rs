@@ -62,7 +62,7 @@ impl Decompiler {
                         );
                         *index += 2;
                     }
-                    Instruction::GetLocal | Instruction::SetLocal => {
+                    Instruction::GetLocal | Instruction::SetLocal | Instruction::IncrementLocal => {
                         println!("{}  {} {}", instr_index, padded_instruction, code[*index + 1]);
                         *index += 1;
                     }
@@ -88,7 +88,10 @@ impl Decompiler {
                         *index += 5;
                     }
 
-                    Instruction::JFalse | Instruction::Jump => {
+                    | Instruction::JFalse
+                    | Instruction::Jump
+                    | Instruction::Loop
+                    | Instruction::JTrue => {
                         let offset = Decompiler::combine_u8_to_u32(
                             code[*index + 1],
                             code[*index + 2],

@@ -335,6 +335,16 @@ impl Parser {
                         )
                     }
                 }
+            TokenKind::Punctuation(punctuation) => {
+                match punctuation {
+                    PunctuationKind::LeftBrace => { self.parse_scope() }
+
+                    _ => {
+                        self.backtrack();
+                        self.expression_statement()
+                    }
+                }
+            }
             _ => {
                 self.backtrack();
                 self.expression_statement()
@@ -427,12 +437,7 @@ impl Parser {
         let mut else_branch: Option<Box<Statement>> = None;
 
         if self.try_eat(&[TokenKind::Keyword(KeywordKind::Else)]) {
-            self.eat(
-                TokenKind::Punctuation(PunctuationKind::LeftBrace),
-                String::from(format!("Expect '{{' after 'else' keyword, but got {:?}", self.peek()))
-            );
-
-            else_branch = Some(Box::new(self.parse_scope()?));
+            else_branch = Some(Box::new(self.statement()?));
         }
 
         Ok(Statement::If(keyword, condition, Box::new(then_branch), else_branch))
@@ -626,6 +631,19 @@ impl Parser {
 
     fn call(&mut self) -> Result<Expression, ParseError> {
         let mut expr = self.literal()?;
+
+        if let Expression::Variable(name) = &expr {
+            if
+                self.try_eat(
+                    &[
+                        TokenKind::Operator(OperatorKind::PostFixIncrement),
+                        TokenKind::Operator(OperatorKind::PostFixDecrement),
+                    ]
+                )
+            {
+                return Ok(Expression::PostFix(self.previous(), Rc::new(expr)));
+            }
+        }
 
         loop {
             if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftParen)]) {

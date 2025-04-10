@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{ cell::RefCell, rc::Rc };
 use core::fmt::Debug;
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     runtime::objects::{ AsRaw, ObjectKind },
 };
 
-use super::objects::{ Float32, Int32, Void, Object };
+use super::objects::{ Bool8, Float32, Int32, Object, Void };
 
 impl Debug for dyn Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,17 +28,21 @@ impl Chunk {
 
 struct Frame {
     pub chunk: Rc<Chunk>,
-    pub stack: Vec<Rc<dyn Object>>,
+    pub sp: usize,
     pub ip: usize,
 }
 
 impl Frame {
     fn new(chunk: Rc<Chunk>) -> Self {
-        Self { chunk, stack: Vec::new(), ip: 0 }
+        Self { chunk, sp: 0, ip: 0 }
     }
 
     pub fn set_ip(&mut self, ip: usize) {
         self.ip = ip;
+    }
+
+    pub fn set_sp(&mut self, sp: usize) {
+        self.sp = sp;
     }
 }
 
@@ -47,7 +51,7 @@ pub struct VirtualMachine {
     pub sp: usize,
     pub stack: Vec<Rc<dyn Object>>,
     pub bytecode: Option<Bytecode>,
-    frame_stack: Vec<Frame>,
+    frame_stack: Vec<RefCell<Frame>>,
     return_address_stack: Vec<usize>,
 }
 
@@ -66,7 +70,9 @@ impl VirtualMachine {
     pub fn interpret(&mut self, bytecode: &Bytecode) {
         self.bytecode = Some(bytecode.clone());
         self.attach_main_fn();
+        let timer = std::time::Instant::now();
         self.execution_loop();
+        println!("Virtual machine took: {:?}", timer.elapsed());
     }
 
     fn execution_loop(&mut self) {
@@ -80,6 +86,7 @@ impl VirtualMachine {
                     let constant = self.frame_stack
                         .last()
                         .unwrap()
+                        .borrow()
                         .chunk.constants[constant_index as usize].clone();
 
                     self.push(constant);
@@ -209,6 +216,130 @@ impl VirtualMachine {
                     }
                 }
 
+                Instruction::Greater => {
+                    let a = self.pop();
+                    let b = self.pop();
+
+                    match (a.get_kind(), b.get_kind()) {
+                        (ObjectKind::Float, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a > b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a > b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new((a as f32) > b)));
+                        }
+                        (ObjectKind::Float, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a > (b as f32))));
+                        }
+                        _ => {}
+                    }
+                }
+
+                Instruction::GreaterEqual => {
+                    let a = self.pop();
+                    let b = self.pop();
+
+                    match (a.get_kind(), b.get_kind()) {
+                        (ObjectKind::Float, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a >= b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a >= b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new((a as f32) >= b)));
+                        }
+                        (ObjectKind::Float, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a >= (b as f32))));
+                        }
+                        _ => {}
+                    }
+                }
+
+                Instruction::Less => {
+                    let a = self.pop();
+                    let b = self.pop();
+
+                    match (a.get_kind(), b.get_kind()) {
+                        (ObjectKind::Float, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a < b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a < b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new((a as f32) < b)));
+                        }
+                        (ObjectKind::Float, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a < (b as f32))));
+                        }
+                        _ => {}
+                    }
+                }
+
+                Instruction::LessEqual => {
+                    let a = self.pop();
+                    let b = self.pop();
+
+                    match (a.get_kind(), b.get_kind()) {
+                        (ObjectKind::Float, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a <= b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a <= b)));
+                        }
+                        (ObjectKind::Int, ObjectKind::Float) => {
+                            let a = a.as_any().downcast_ref::<Int32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new((a as f32) <= b)));
+                        }
+                        (ObjectKind::Float, ObjectKind::Int) => {
+                            let a = a.as_any().downcast_ref::<Float32>().unwrap().v;
+                            let b = b.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(a <= (b as f32))));
+                        }
+                        _ => {}
+                    }
+                }
+
+                Instruction::True => {
+                    self.push(Rc::new(Bool8::new(true)));
+                }
+
+                Instruction::False => {
+                    self.push(Rc::new(Bool8::new(false)));
+                }
+
                 Instruction::Print => {
                     let value = self.pop().to_string();
                     println!("{}", value);
@@ -224,6 +355,24 @@ impl VirtualMachine {
                     let index = self.read_byte();
                     let value = &self.stack[index as usize];
                     self.push(value.clone());
+                }
+
+                Instruction::IncrementLocal => {
+                    let index = self.read_byte();
+                    let value = &self.stack[index as usize];
+
+                    self.stack[index as usize] = Rc::new(
+                        Int32::new(value.as_any().downcast_ref::<Int32>().unwrap().v + 1)
+                    );
+                }
+
+                Instruction::DecrementLocal => {
+                    let index = self.read_byte();
+                    let value = &self.stack[index as usize];
+
+                    self.stack[index as usize] = Rc::new(
+                        Int32::new(value.as_any().downcast_ref::<Int32>().unwrap().v - 1)
+                    );
                 }
 
                 Instruction::Call => {
@@ -248,6 +397,59 @@ impl VirtualMachine {
                     break;
                 }
 
+                Instruction::Loop => {
+                    let offset = self.read_u32();
+                    self.ip -= offset as usize;
+                }
+
+                Instruction::Jump => {
+                    let offset = self.read_u32();
+                    self.ip += offset as usize;
+                }
+
+                Instruction::JFalse => {
+                    let offset = self.read_u32();
+                    let value = self.pop();
+
+                    if value.get_kind() == ObjectKind::Boolean {
+                        let b = value.as_any().downcast_ref::<Bool8>().unwrap().v;
+                        if !b {
+                            self.ip += offset as usize;
+                        }
+                    }
+                }
+
+                Instruction::JTrue => {
+                    let offset = self.read_u32();
+                    let value = self.pop();
+
+                    if value.get_kind() == ObjectKind::Boolean {
+                        let b = value.as_any().downcast_ref::<Bool8>().unwrap().v;
+                        if b {
+                            self.ip += offset as usize;
+                        }
+                    }
+                }
+
+                Instruction::Not => {
+                    let value = self.pop();
+
+                    match value.get_kind() {
+                        ObjectKind::Float => {
+                            let f = value.as_any().downcast_ref::<Float32>().unwrap().v;
+                            self.push(Rc::new(Float32::new(-f)));
+                        }
+                        ObjectKind::Int => {
+                            let i = value.as_any().downcast_ref::<Int32>().unwrap().v;
+                            self.push(Rc::new(Int32::new(-i)));
+                        }
+                        ObjectKind::Boolean => {
+                            let b = value.as_any().downcast_ref::<Bool8>().unwrap().v;
+                            self.push(Rc::new(Bool8::new(!b)));
+                        }
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
@@ -280,7 +482,7 @@ impl VirtualMachine {
     }
 
     fn read_byte(&mut self) -> u8 {
-        let byte = self.frame_stack.last().unwrap().chunk.code[self.ip];
+        let byte = self.frame_stack.last().unwrap().borrow().chunk.code[self.ip];
         self.ip += 1;
 
         byte
@@ -303,7 +505,7 @@ impl VirtualMachine {
 
     fn attach_main_fn(&mut self) {
         let main = Frame::new(self.bytecode.clone().unwrap().main.unwrap().chunk);
-        self.frame_stack.push(main);
+        self.frame_stack.push(RefCell::new(main));
         self.ip = 0;
     }
 
@@ -312,13 +514,19 @@ impl VirtualMachine {
         let chunk = code.unwrap().get_function(function_id);
         let frame = Frame::new(chunk);
 
-        self.return_address_stack.push(self.ip.clone());
-        self.frame_stack.push(frame);
+        self.frame_stack.last().unwrap().borrow_mut().set_ip(self.ip);
+        self.frame_stack
+            .last()
+            .unwrap()
+            .borrow_mut()
+            .set_sp(self.sp - (arity as usize));
+        self.frame_stack.push(RefCell::new(frame));
         self.ip = 0;
     }
 
     fn detach_fn(&mut self) {
         self.frame_stack.pop();
-        self.ip = self.return_address_stack.pop().unwrap();
+        self.ip = self.frame_stack.last().unwrap().borrow().ip;
+        self.sp = self.frame_stack.last().unwrap().borrow().sp;
     }
 }

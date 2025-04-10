@@ -1,9 +1,9 @@
-use std::{env, process};
+use std::{ env, process };
 
-use gppvm::command::{self, CommandlineArguments};
+use gppvm::command::{ self, CommandlineArguments };
 
 fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
+    //env::set_var("RUST_BACKTRACE", "1");
 
     let args: Vec<String> = env::args().into_iter().collect();
     let config = CommandlineArguments::new(args);

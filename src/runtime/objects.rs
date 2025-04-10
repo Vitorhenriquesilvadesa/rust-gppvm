@@ -1,6 +1,6 @@
 use std::{ fmt::Debug, rc::Rc };
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ObjectKind {
     Int,
     Float,
@@ -12,6 +12,7 @@ pub enum ObjectKind {
 
 pub trait Object {
     fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
     fn get_kind(&self) -> ObjectKind;
     fn type_name(&self) -> &'static str;
     fn to_string(&self) -> String;
@@ -53,6 +54,10 @@ impl Object for Int32 {
     fn to_string(&self) -> String {
         format!("{}", self.v)
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl Int32 {
@@ -87,6 +92,10 @@ impl Object for Float32 {
 
     fn to_string(&self) -> String {
         format!("{}", self.v)
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 
@@ -123,6 +132,10 @@ impl Object for Bool8 {
     fn to_string(&self) -> String {
         format!("{}", self.v)
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl Bool8 {
@@ -158,6 +171,10 @@ impl Object for GPPString {
     fn to_string(&self) -> String {
         format!("{}", self.v)
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl GPPString {
@@ -192,6 +209,10 @@ impl Object for Void {
 
     fn to_string(&self) -> String {
         format!("void")
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

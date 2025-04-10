@@ -114,6 +114,9 @@ impl IRGenerator {
                 let code = self.generate_expr_ir(expression);
                 code
             }
+            AnnotatedStatement::While(condition, body) => {
+                self.generate_while_ir(condition, body)
+            }
             AnnotatedStatement::ForEach(variable, condition, body) => { vec![] }
             AnnotatedStatement::Function(prototype, body) => {
                 self.generate_function_ir(prototype, body)
@@ -259,6 +262,10 @@ impl IRGenerator {
                 self.generate_arithmetic_expr_ir(left, op, right, kind)
             }
 
+            AnnotatedExpression::PostFix(operator, variable) => {
+                self.generate_postfix_expr_ir(operator, variable)
+            }
+
             AnnotatedExpression::Call(proto, callee, args, kind) => {
                 self.generate_call_expr_ir(proto, callee, args, kind)
             }
@@ -269,6 +276,10 @@ impl IRGenerator {
 
             AnnotatedExpression::Assign(name, value, kind) => {
                 self.generate_assign_expr_ir(name, value, kind)
+            }
+
+            AnnotatedExpression::Unary(operator, expression, kind) => {
+                self.generate_unary_expr_ir(operator, expression, kind)
             }
 
             AnnotatedExpression::Variable(name, kind) => self.generate_variable_expr_ir(name, kind),
@@ -486,7 +497,6 @@ impl IRGenerator {
 
         code
     }
-
     fn generate_if_else(
         &mut self,
         keyword: &Token,
@@ -500,42 +510,43 @@ impl IRGenerator {
         code.append(&mut condition_code);
 
         self.emit_instruction(&mut code, Instruction::JFalse);
-
-        let jump_to_else_patch = code.len();
-
+        let jfalse_offset_pos = code.len();
         code.extend(&[0xff, 0xff, 0xff, 0xff]);
 
         let mut then_branch_code = self.generate_ir_for(then_branch);
         code.append(&mut then_branch_code);
 
-        let mut jump_to_end_patch = None;
-
-        if let Some(else_branch) = else_branch {
+        let mut jump_to_end_offset_pos = None;
+        if else_branch.is_some() {
             self.emit_instruction(&mut code, Instruction::Jump);
-            jump_to_end_patch = Some(code.len());
-
+            jump_to_end_offset_pos = Some(code.len());
             code.extend(&[0xff, 0xff, 0xff, 0xff]);
         }
 
-        let else_start = code.len();
+        let else_start_pos = code.len();
 
-        let jump_offset = self.split_u32(else_start as u32);
-        code[jump_to_else_patch] = jump_offset.0;
-        code[jump_to_else_patch + 1] = jump_offset.1;
-        code[jump_to_else_patch + 2] = jump_offset.2;
-        code[jump_to_else_patch + 3] = jump_offset.3;
+        let jfalse_jump_target = else_start_pos;
+        let jfalse_offset = (jfalse_jump_target - (jfalse_offset_pos + 4)) as u32;
+        let (byte1, byte2, byte3, byte4) = self.split_u32(jfalse_offset);
+
+        code[jfalse_offset_pos] = byte1;
+        code[jfalse_offset_pos + 1] = byte2;
+        code[jfalse_offset_pos + 2] = byte3;
+        code[jfalse_offset_pos + 3] = byte4;
 
         if let Some(else_branch) = else_branch {
-            let mut else_branch_code = self.generate_ir_for(else_branch);
-            code.append(&mut else_branch_code);
+            let mut else_code = self.generate_ir_for(else_branch);
+            code.append(&mut else_code);
 
-            if let Some(jump_patch) = jump_to_end_patch {
-                let end_if = code.len();
-                let jump_offset = self.split_u32(end_if as u32);
-                code[jump_patch] = jump_offset.0;
-                code[jump_patch + 1] = jump_offset.1;
-                code[jump_patch + 2] = jump_offset.2;
-                code[jump_patch + 3] = jump_offset.3;
+            if let Some(jump_offset_pos) = jump_to_end_offset_pos {
+                let jump_end_target = code.len();
+                let jump_offset = (jump_end_target - (jump_offset_pos + 4)) as u32;
+                let (byte1, byte2, byte3, byte4) = self.split_u32(jump_offset);
+
+                code[jump_offset_pos] = byte1;
+                code[jump_offset_pos + 1] = byte2;
+                code[jump_offset_pos + 2] = byte3;
+                code[jump_offset_pos + 3] = byte4;
             }
         }
 
@@ -563,6 +574,92 @@ impl IRGenerator {
             "print".to_string(),
             IRFunction::new(id, "print".to_string(), self.current_chunk.clone(), 1)
         );
+    }
+
+    fn generate_unary_expr_ir(
+        &mut self,
+        operator: &Token,
+        expression: &AnnotatedExpression,
+        kind: &TypeDescriptor
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+        let mut expr_code = self.generate_expr_ir(expression);
+        code.append(&mut expr_code);
+
+        self.emit_instruction(&mut code, Instruction::Not);
+        code
+    }
+
+    fn generate_while_ir(
+        &mut self,
+        condition: &AnnotatedExpression,
+        body: &AnnotatedStatement
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+        let mut condition_code = self.generate_expr_ir(condition);
+        let condition_len = condition_code.len();
+
+        self.begin_scope();
+
+        code.append(&mut condition_code);
+        self.emit_instruction(&mut code, Instruction::JFalse);
+        let end_jump_offset = code.len();
+
+        code.extend(&[0xff, 0xff, 0xff, 0xff]);
+        let mut body_code = self.generate_ir_for(body);
+        code.append(&mut body_code);
+
+        let offset = code.len() + 5;
+        self.emit_instruction(&mut code, Instruction::Loop);
+        let (byte1, byte2, byte3, byte4) = self.split_u32(offset as u32);
+
+        self.emit_byte(&mut code, byte1);
+        self.emit_byte(&mut code, byte2);
+        self.emit_byte(&mut code, byte3);
+        self.emit_byte(&mut code, byte4);
+
+        let offset = code.len() - condition_len - 5;
+        let (byte1, byte2, byte3, byte4) = self.split_u32(offset as u32);
+
+        code[end_jump_offset] = byte1;
+        code[end_jump_offset + 1] = byte2;
+        code[end_jump_offset + 2] = byte3;
+        code[end_jump_offset + 3] = byte4;
+
+        self.end_scope(&mut code);
+
+        code
+    }
+
+    fn generate_postfix_expr_ir(
+        &mut self,
+        operator: &Token,
+        variable: &AnnotatedExpression
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+
+        if let AnnotatedExpression::Variable(name, kind) = variable {
+            let index = self.get_in_depth(name.lexeme.clone());
+            match operator.kind {
+                TokenKind::Operator(op) => {
+                    match op {
+                        OperatorKind::PostFixIncrement => {
+                            self.emit_instruction(&mut code, Instruction::IncrementLocal);
+                            self.emit_byte(&mut code, index as u8);
+                        }
+                        OperatorKind::PostFixDecrement => {
+                            self.emit_instruction(&mut code, Instruction::DecrementLocal);
+                            self.emit_byte(&mut code, index as u8);
+                        }
+
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        code
     }
 }
 

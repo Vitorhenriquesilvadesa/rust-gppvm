@@ -9,5 +9,9 @@ def factorial(x: int) -> int {
 }
 
 def main() -> void {
-    print(factorial(factorial(3)));
+    let i = 0;
+
+    while i < 1000000 {
+        i++;
+    }
 }

@@ -1,7 +1,7 @@
 use num_enum::{ IntoPrimitive, TryFromPrimitive };
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive, Hash)]
 pub enum Instruction {
     Ret,
     Add,

@@ -1,14 +1,14 @@
 #![allow(warnings)]
 
 mod errors;
-mod instructions;
 mod lexer;
 mod parser;
 mod semantics;
 mod statements;
 mod expressions;
 mod ir_generator;
-mod bytecode_gen;
+pub mod bytecode_gen;
+pub mod instructions;
 mod ast;
 mod chunk;
 mod decompiler;
@@ -26,6 +26,7 @@ use std::{ env, fs };
 use std::{ error::Error, io::{ self, Read } };
 
 use crate::read_file_without_bom;
+use crate::runtime::virtual_machine::VirtualMachine;
 
 use self::{ lexer::Lexer, parser::Parser };
 
@@ -64,7 +65,7 @@ pub fn run(config: CompilerArguments) -> Result<(), String> {
     let start = Instant::now();
     compiler.compile(source);
 
-    println!("Compiler took: {:?}", start.elapsed());
+    // println!("Compiler took: {:?}", start.elapsed());
 
     Ok(())
 }
@@ -99,13 +100,13 @@ impl Compiler {
         );
         let ir_code = self.ir_generator.generate(Rc::clone(&self.reporter), &semantic_code);
 
-        println!("{:#?}", ir_code);
-
         Decompiler::decompile(&ir_code);
 
         let bytecode_generator = BytecodeGenerator::new();
-
         let bytecode = bytecode_generator.generate(&ir_code);
+
+        let mut vm = VirtualMachine::new();
+        vm.interpret(&bytecode);
 
         for error in self.reporter.borrow().get_errors() {
             eprintln!("Error: {} At line {:?}.", error.msg, error.line);

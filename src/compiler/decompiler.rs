@@ -12,7 +12,11 @@ impl Decompiler {
             let width = 60;
             println!(
                 "{}",
-                format!("{:=^1$}", format!(" {} (arity = {}) ", name, function.arity), width)
+                format!(
+                    "{:=^1$}",
+                    format!(" {} (id = {}; arity = {}) ", name, function.id, function.arity),
+                    width
+                )
             );
             Decompiler::decompile_function(function, code);
             println!("{}", "=".repeat(width));

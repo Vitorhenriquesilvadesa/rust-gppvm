@@ -556,7 +556,7 @@ impl Parser {
     fn comparison(&mut self) -> Result<Expression, ParseError> {
         let mut expr = self.term()?;
 
-        while
+        if
             self.try_eat(
                 &[
                     TokenKind::Operator(OperatorKind::Less),

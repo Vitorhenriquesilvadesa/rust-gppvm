@@ -1,4 +1,4 @@
-#global: [parallel("agressive"), backend("cuda")]
+#global: [parallel("low"), backend("opencl")]
 
 type Point:
     x: float = 0

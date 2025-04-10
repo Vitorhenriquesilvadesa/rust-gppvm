@@ -112,7 +112,6 @@ impl IRGenerator {
             AnnotatedStatement::EndCode => { vec![] }
             AnnotatedStatement::Expression(expression) => {
                 let code = self.generate_expr_ir(expression);
-
                 code
             }
             AnnotatedStatement::ForEach(variable, condition, body) => { vec![] }
@@ -174,6 +173,9 @@ impl IRGenerator {
 
         if prototype.name.cmp(&String::from("main")) == Ordering::Equal {
             self.emit_instruction(&mut code, Instruction::Halt);
+        } else {
+            self.emit_instruction(&mut code, Instruction::Void);
+            self.emit_instruction(&mut code, Instruction::Ret);
         }
 
         self.current_chunk.code = code.clone();
@@ -206,11 +208,6 @@ impl IRGenerator {
                 for byte in value_code {
                     self.emit_byte(&mut code, byte);
                 }
-
-                self.emit_instruction(&mut code, Instruction::SetLocal);
-
-                // The variable are on top of VM stack after declare with initializer.
-                self.emit_byte(&mut code, self.get_in_depth(name.lexeme.clone()) as u8);
             }
             None => {}
         }
@@ -318,9 +315,9 @@ impl IRGenerator {
             let index = self.current_chunk.add_constant(constant);
             bytes.push(Instruction::Push as u8);
 
-            let (high, low) = self.split_u16(index);
-            bytes.push(high);
+            let (low, high) = self.split_u16(index);
             bytes.push(low);
+            bytes.push(high);
         }
 
         bytes
@@ -557,6 +554,8 @@ impl IRGenerator {
         let mut code = Vec::new();
 
         self.emit_instruction(&mut code, Instruction::Print);
+        self.emit_instruction(&mut code, Instruction::Void);
+        self.emit_instruction(&mut code, Instruction::Ret);
 
         self.current_chunk.code = code;
 

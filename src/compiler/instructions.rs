@@ -63,5 +63,6 @@ pub enum Instruction {
     Halt,
     Void,
     DecrementLocal,
+    New,
     __Count,
 }

@@ -88,6 +88,20 @@ impl Decompiler {
                         *index += 5;
                     }
 
+                    Instruction::New => {
+                        let arity = code[*index + 1];
+
+                        println!("{}  {} {}", instr_index, padded_instruction, arity);
+                        *index += 1;
+                    }
+
+                    Instruction::Get => {
+                        let field_index = code[*index + 1];
+
+                        println!("{}  {} {}", instr_index, padded_instruction, field_index);
+                        *index += 1;
+                    }
+
                     | Instruction::JFalse
                     | Instruction::Jump
                     | Instruction::Loop

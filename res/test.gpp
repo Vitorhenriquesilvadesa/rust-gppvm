@@ -1,7 +1,18 @@
+type Vec3 {
+    x: float,
+    y: float,
+    z: float,
+}
+
+def print_vec3(v: Vec3) -> void {
+    print(v);
+}
+
 def main() -> void {
     let i = 0;
 
-    while i < 10000000 {
+    while i < 1000000 {
+        let point = Vec3(1.0, 2.0, 3.0);
         i++;
     }
 }

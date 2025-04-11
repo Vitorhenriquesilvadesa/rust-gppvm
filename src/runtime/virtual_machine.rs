@@ -6,7 +6,7 @@ use crate::{
     runtime::objects::ObjectKind,
 };
 
-use super::objects::{ Object, Value };
+use super::objects::{ Instance, Object, Value };
 
 impl Debug for dyn Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -275,6 +275,33 @@ impl VirtualMachine {
     }
 
     #[inline(always)]
+    pub fn handle_get(&mut self) {
+        let object = self.pop();
+        let index = self.read_byte();
+
+        if let Value::Object(obj_ptr) = object {
+            self.push(
+                obj_ptr.as_any().downcast_ref::<Instance>().unwrap().fields[index as usize].clone()
+            );
+        }
+    }
+
+    #[inline(always)]
+    pub fn handle_new(&mut self) {
+        let arity = self.read_byte();
+
+        let mut fields: Vec<Value> = Vec::new();
+
+        self.sp -= arity as usize;
+
+        for i in 0..arity as usize {
+            fields.push(self.stack[self.sp + i].clone());
+        }
+
+        self.push(Value::Object(Rc::new(Instance::new(fields))));
+    }
+
+    #[inline(always)]
     pub fn handle_print(&mut self) {
         let value = self.pop();
 
@@ -283,6 +310,9 @@ impl VirtualMachine {
             Value::Int(i) => println!("{}", i),
             Value::Float(f) => println!("{}", f),
             Value::String(s) => println!("{}", s),
+            Value::Object(obj) => {
+                println!("{}", obj.to_string());
+            }
             _ => todo!(),
         }
     }
@@ -424,9 +454,6 @@ impl VirtualMachine {
                 Instruction::JTrue => self.handle_jtrue(),
                 Instruction::JFalse => self.handle_jfalse(),
                 Instruction::Ret => self.handle_return(),
-                Instruction::Halt => {
-                    break;
-                }
                 Instruction::Print => self.handle_print(),
                 Instruction::Call => self.handle_call(),
                 Instruction::True => self.handle_true(),
@@ -437,6 +464,11 @@ impl VirtualMachine {
                 Instruction::DecrementLocal => self.handle_decrement_local(),
                 Instruction::IncrementLocal => self.handle_increment_local(),
                 Instruction::Loop => self.handle_loop(),
+                Instruction::New => self.handle_new(),
+                Instruction::Get => self.handle_get(),
+                Instruction::Halt => {
+                    break;
+                }
                 _ => panic!("Unimplemented instruction: {:?}", instruction),
             }
         }
@@ -484,7 +516,11 @@ impl VirtualMachine {
         print!("Stack [");
 
         for i in 0..self.sp {
-            print!("{:?}, ", self.stack[i]);
+            if let Value::Object(obj_ptr) = &self.stack[i] {
+                print!("{}, ", obj_ptr.to_string());
+            } else {
+                print!("{:?}, ", self.stack[i]);
+            }
         }
 
         println!("]");

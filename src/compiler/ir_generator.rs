@@ -127,7 +127,7 @@ impl IRGenerator {
             }
             AnnotatedStatement::Return(value) => self.generate_return_ir(value),
             AnnotatedStatement::Scope(statements) => self.generate_scope_ir(statements),
-            AnnotatedStatement::Type(descriptor) => { vec![] }
+            AnnotatedStatement::Type(descriptor) => { self.generate_type_ir(descriptor) }
             AnnotatedStatement::Variable(name, value) => {
                 self.generate_variable_decl_ir(name, value)
             }
@@ -286,7 +286,11 @@ impl IRGenerator {
 
             AnnotatedExpression::Literal(token, kind) => self.generate_literal_ir(token, kind),
 
-            _ => Vec::new(),
+            AnnotatedExpression::Get(target, name, kind) => {
+                self.generate_get_expr_ir(target, name, kind)
+            }
+
+            _ => todo!(),
         }
     }
 
@@ -484,19 +488,24 @@ impl IRGenerator {
             code.append(&mut arg_code);
         }
 
-        code.push(Instruction::Call as u8);
+        if self.is_constructor(proto, kind) {
+            code.push(Instruction::New as u8);
+        } else {
+            code.push(Instruction::Call as u8);
 
-        let index_bytes = self.split_u32(function_table_index);
+            let index_bytes = self.split_u32(function_table_index);
 
-        code.push(index_bytes.0);
-        code.push(index_bytes.1);
-        code.push(index_bytes.2);
-        code.push(index_bytes.3);
+            code.push(index_bytes.0);
+            code.push(index_bytes.1);
+            code.push(index_bytes.2);
+            code.push(index_bytes.3);
+        }
 
         code.push(proto.arity as u8);
 
         code
     }
+
     fn generate_if_else(
         &mut self,
         keyword: &Token,
@@ -658,6 +667,32 @@ impl IRGenerator {
                 _ => {}
             }
         }
+
+        code
+    }
+
+    fn is_constructor(&self, proto: &FunctionPrototype, return_kind: &TypeDescriptor) -> bool {
+        proto.name == return_kind.name
+    }
+
+    fn generate_type_ir(&mut self, descriptor: &TypeDescriptor) -> Vec<u8> {
+        self.top_level_graph.get_id_for_new_edge(descriptor.name.clone());
+
+        vec![]
+    }
+
+    fn generate_get_expr_ir(
+        &mut self,
+        target: &AnnotatedExpression,
+        name: &Token,
+        kind: &TypeDescriptor
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+        code.append(&mut self.generate_expr_ir(target));
+
+        let field_index = kind.fields[&name.lexeme].id;
+        self.emit_instruction(&mut code, Instruction::Get);
+        self.emit_byte(&mut code, field_index);
 
         code
     }

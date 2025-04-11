@@ -98,22 +98,23 @@ impl Archetype {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDescriptor {
-    name: String,
-    kind: TypeDescriptor,
+    pub name: String,
+    pub kind: TypeDescriptor,
+    pub id: u8,
 }
 
 impl FieldDescriptor {
-    pub fn new(name: String, kind: TypeDescriptor) -> Self {
-        Self { name, kind }
+    pub fn new(name: String, kind: TypeDescriptor, id: u8) -> Self {
+        Self { name, kind, id }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeDescriptor {
-    name: String,
-    id: u32,
-    archetypes: HashSet<Archetype>,
-    fields: HashMap<String, FieldDescriptor>,
+    pub name: String,
+    pub id: u32,
+    pub archetypes: HashSet<Archetype>,
+    pub fields: HashMap<String, FieldDescriptor>,
 }
 
 impl TypeDescriptor {
@@ -536,7 +537,11 @@ impl SemanticAnalyzer {
 
         fields.insert(
             name.to_string(),
-            FieldDescriptor::new(field_descriptor.name.clone(), field_descriptor.clone())
+            FieldDescriptor::new(
+                field_descriptor.name.clone(),
+                field_descriptor.clone(),
+                fields.len() as u8
+            )
         );
     }
 
@@ -842,7 +847,7 @@ impl SemanticAnalyzer {
 
         let mut type_fields: HashMap<String, FieldDescriptor> = HashMap::new();
 
-        for field in fields {
+        for (index, field) in fields.iter().enumerate() {
             if let Expression::TypeComposition(mask) = field.kind.clone() {
                 let kind = self.resolve_type_composition(&mask);
                 let archetypes: Vec<Archetype> = kind.archetypes.clone().into_iter().collect();
@@ -865,7 +870,7 @@ impl SemanticAnalyzer {
 
                 type_fields.insert(
                     field.name.lexeme.clone(),
-                    FieldDescriptor::new(field.name.lexeme.clone(), kind.clone())
+                    FieldDescriptor::new(field.name.lexeme.clone(), kind.clone(), index as u8)
                 );
             }
         }

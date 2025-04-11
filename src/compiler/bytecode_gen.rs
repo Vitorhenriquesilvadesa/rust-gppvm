@@ -1,9 +1,6 @@
 use std::{ cmp::Ordering, collections::HashMap, rc::Rc };
 
-use crate::{
-    gpp_error,
-    runtime::{ objects::{ Bool8, Float32, GPPString, Int32, Object }, virtual_machine::Chunk },
-};
+use crate::{ gpp_error, runtime::{ objects::{ Object, Value }, virtual_machine::Chunk } };
 
 use super::ir_generator::IntermediateCode;
 
@@ -51,20 +48,20 @@ impl BytecodeGenerator {
             let mut constants = Vec::new();
 
             for constant in &function.1.chunk.constants {
-                let c: Rc<dyn Object>;
+                let c: Value;
 
                 match constant {
                     super::chunk::CompileTimeValue::Int(v) => {
-                        c = Rc::new(Int32::new(v.clone()));
+                        c = Value::Int(v.clone());
                     }
                     super::chunk::CompileTimeValue::Float(v) => {
-                        c = Rc::new(Float32::new(v.clone()));
+                        c = Value::Float(v.clone());
                     }
                     super::chunk::CompileTimeValue::String(v) => {
-                        c = Rc::new(GPPString::new(Rc::new(v.clone())));
+                        c = Value::String(Rc::new(v.clone()));
                     }
                     super::chunk::CompileTimeValue::Boolean(v) => {
-                        c = Rc::new(Bool8::new(v.clone()));
+                        c = Value::Bool(v.clone());
                     }
                     super::chunk::CompileTimeValue::Object(v) => {
                         gpp_error!("Cannot create complex object constants.");

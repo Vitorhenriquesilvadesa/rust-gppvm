@@ -1,17 +1,7 @@
-def factorial(x: int) -> int {
-    let result = 1;
-    while x > 0 {
-        result = result * x;
-        x--;
-    }
-
-    return result;
-}
-
 def main() -> void {
     let i = 0;
 
-    while i < 1000000 {
+    while i < 10000000 {
         i++;
     }
 }

@@ -4,15 +4,17 @@ type Vec3 {
     z: float,
 }
 
-def print_vec3(v: Vec3) -> void {
-    print(v);
+def origin() -> Vec3 {
+    return Vec3(0.0, 0.0, 0.0);
+}
+
+type Transform {
+    position: Vec3,
+    rotation: Vec3,
 }
 
 def main() -> void {
-    let i = 0;
+    let nums = [[1, 2, 3], [1, 2, 3], [1, 2, 3]];
 
-    while i < 1000000 {
-        let point = Vec3(1.0, 2.0, 3.0);
-        i++;
-    }
+    print(nums);
 }

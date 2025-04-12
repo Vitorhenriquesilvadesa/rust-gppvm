@@ -1,4 +1,6 @@
-use std::{ fmt::{ Debug, Display }, rc::Rc };
+#![allow(dead_code)]
+#![allow(unused_macros)]
+use std::{ cell::RefCell, fmt::{ Debug, Display }, rc::Rc };
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ObjectKind {
@@ -17,7 +19,7 @@ pub enum Value {
     Bool(bool),
     String(Rc<String>),
     Void,
-    Object(Rc<dyn Object>),
+    Object(Rc<RefCell<dyn Object>>),
 }
 
 impl Debug for Value {
@@ -28,7 +30,7 @@ impl Debug for Value {
             Value::Float(v) => f.write_str(&format!("{}", v)),
             Value::String(v) => f.write_str(&format!("{}", v)),
             Value::Void => f.write_str("void"),
-            Value::Object(obj_ptr) => f.write_str(&format!("{}", obj_ptr.to_string())),
+            Value::Object(obj_ptr) => f.write_str(&format!("{}", obj_ptr.borrow().to_string())),
         }
     }
 }
@@ -41,7 +43,7 @@ impl Display for Value {
             Value::Float(v) => f.write_str(&format!("{}", v)),
             Value::String(v) => f.write_str(&format!("{}", v)),
             Value::Void => f.write_str("void"),
-            Value::Object(obj_ptr) => f.write_str(&format!("{}", obj_ptr.to_string())),
+            Value::Object(obj_ptr) => f.write_str(&format!("{}", obj_ptr.borrow().to_string())),
         }
     }
 }
@@ -52,6 +54,12 @@ pub trait Object {
     fn get_kind(&self) -> ObjectKind;
     fn type_name(&self) -> &'static str;
     fn to_string(&self) -> String;
+}
+
+impl Debug for dyn Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&String::from(format!("{:?}", self)))
+    }
 }
 
 pub struct Instance {
@@ -83,6 +91,38 @@ impl Object for Instance {
 
     fn to_string(&self) -> String {
         format!("{:?}", self.fields)
+    }
+}
+
+pub struct List {
+    pub elements: Vec<Value>,
+}
+
+impl List {
+    pub fn new(elements: Vec<Value>) -> Self {
+        Self { elements }
+    }
+}
+
+impl Object for List {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn get_kind(&self) -> ObjectKind {
+        ObjectKind::Obj
+    }
+
+    fn type_name(&self) -> &'static str {
+        "list"
+    }
+
+    fn to_string(&self) -> String {
+        format!("{:?}", self.elements)
     }
 }
 

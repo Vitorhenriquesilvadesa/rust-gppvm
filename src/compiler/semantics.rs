@@ -393,6 +393,7 @@ pub enum AnnotatedExpression {
     Attribute(Token, Vec<Box<AnnotatedExpression>>),
     Void,
     PostFix(Token, Box<AnnotatedExpression>),
+    Set(Box<AnnotatedExpression>, Token, Box<AnnotatedExpression>, TypeDescriptor),
 }
 
 #[derive(Debug, Clone)]
@@ -1266,7 +1267,7 @@ impl SemanticAnalyzer {
             Expression::Lambda => todo!(),
             Expression::Get(expression, token) => self.analyze_get_expr(&expression, token),
             Expression::Variable(token) => self.analyze_variable_get_expr(token),
-            Expression::Set(expression, token, expression1) => todo!(),
+            Expression::Set(target, name, value) => self.analyze_set_expr(target, name, value),
             Expression::Call(callee, paren, args) => {
                 self.analyze_call_expression(&callee, &paren, &args)
             }
@@ -2754,5 +2755,30 @@ impl SemanticAnalyzer {
         } else {
             gpp_error!("Only variables can use postfix operators.");
         }
+    }
+
+    fn analyze_set_expr(
+        &mut self,
+        target: Rc<Expression>,
+        name: Token,
+        value: Rc<Expression>
+    ) -> AnnotatedExpression {
+        let annotated_target = self.analyze_expr(&target);
+        let annotated_value = self.analyze_expr(&value);
+        let target_kind = self.resolve_expr_type(&target);
+        let value_kind = self.resolve_expr_type(&value);
+
+        // self.assert_kind_equals(
+        //     value_kind,
+        //     target_kind,
+        //     "Cannot assign instance field with different kind.".to_string()
+        // );
+
+        AnnotatedExpression::Set(
+            Box::new(annotated_target),
+            name,
+            Box::new(annotated_value),
+            target_kind
+        )
     }
 }

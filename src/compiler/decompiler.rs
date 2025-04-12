@@ -95,7 +95,7 @@ impl Decompiler {
                         *index += 1;
                     }
 
-                    Instruction::Get => {
+                    Instruction::GetField | Instruction::SetField | Instruction::Array => {
                         let field_index = code[*index + 1];
 
                         println!("{}  {} {}", instr_index, padded_instruction, field_index);

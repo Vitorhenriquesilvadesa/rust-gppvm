@@ -1,18 +1,7 @@
-use std::{ cell::RefCell, collections::HashMap, rc::Rc };
+use std::{ cell::RefCell, rc::Rc };
 use core::fmt::Debug;
-
-use crate::{
-    compiler::{ bytecode_gen::Bytecode, instructions::Instruction },
-    runtime::objects::ObjectKind,
-};
-
-use super::objects::{ Instance, Object, Value };
-
-impl Debug for dyn Object {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&String::from(format!("{:?}", self)))
-    }
-}
+use crate::compiler::{ bytecode_gen::Bytecode, instructions::Instruction };
+use super::objects::{ Instance, List, Value };
 
 #[derive(Debug)]
 pub struct Chunk {
@@ -275,14 +264,31 @@ impl VirtualMachine {
     }
 
     #[inline(always)]
-    pub fn handle_get(&mut self) {
+    pub fn handle_get_field(&mut self) {
         let object = self.pop();
         let index = self.read_byte();
 
         if let Value::Object(obj_ptr) = object {
             self.push(
-                obj_ptr.as_any().downcast_ref::<Instance>().unwrap().fields[index as usize].clone()
+                obj_ptr
+                    .borrow()
+                    .as_any()
+                    .downcast_ref::<Instance>()
+                    .unwrap()
+                    .fields[index as usize].clone()
             );
+        }
+    }
+
+    pub fn handle_set_field(&mut self) {
+        let value = self.pop();
+        let object = self.pop();
+        let index = self.read_byte();
+
+        if let Value::Object(obj_ptr) = &object {
+            obj_ptr.borrow_mut().as_any_mut().downcast_mut::<Instance>().unwrap().fields[
+                index as usize
+            ] = value;
         }
     }
 
@@ -298,7 +304,7 @@ impl VirtualMachine {
             fields.push(self.stack[self.sp + i].clone());
         }
 
-        self.push(Value::Object(Rc::new(Instance::new(fields))));
+        self.push(Value::Object(Rc::new(RefCell::new(Instance::new(fields)))));
     }
 
     #[inline(always)]
@@ -311,7 +317,7 @@ impl VirtualMachine {
             Value::Float(f) => println!("{}", f),
             Value::String(s) => println!("{}", s),
             Value::Object(obj) => {
-                println!("{}", obj.to_string());
+                println!("{}", obj.borrow().to_string());
             }
             _ => todo!(),
         }
@@ -328,6 +334,36 @@ impl VirtualMachine {
     pub fn handle_get_local(&mut self) {
         let index = self.read_byte();
         let value = &self.stack[index as usize];
+        self.push(value.clone());
+    }
+
+    #[inline(always)]
+    pub fn handle_get_local0(&mut self) {
+        let value = &self.stack[0];
+        self.push(value.clone());
+    }
+
+    #[inline(always)]
+    pub fn handle_get_local1(&mut self) {
+        let value = &self.stack[1];
+        self.push(value.clone());
+    }
+
+    #[inline(always)]
+    pub fn handle_get_local2(&mut self) {
+        let value = &self.stack[2];
+        self.push(value.clone());
+    }
+
+    #[inline(always)]
+    pub fn handle_get_local3(&mut self) {
+        let value = &self.stack[3];
+        self.push(value.clone());
+    }
+
+    #[inline(always)]
+    pub fn handle_get_local4(&mut self) {
+        let value = &self.stack[4];
         self.push(value.clone());
     }
 
@@ -425,6 +461,21 @@ impl VirtualMachine {
         }
     }
 
+    #[inline(always)]
+    pub fn handle_array(&mut self) {
+        let arity = self.read_byte();
+
+        let mut elements: Vec<Value> = Vec::new();
+
+        self.sp -= arity as usize;
+
+        for i in 0..arity as usize {
+            elements.push(self.stack[self.sp + i].clone());
+        }
+
+        self.push(Value::Object(Rc::new(RefCell::new(List::new(elements)))));
+    }
+
     pub fn interpret(&mut self, bytecode: &Bytecode) {
         self.bytecode = Some(bytecode.clone());
         self.attach_main_fn();
@@ -459,13 +510,20 @@ impl VirtualMachine {
                 Instruction::True => self.handle_true(),
                 Instruction::False => self.handle_false(),
                 Instruction::GetLocal => self.handle_get_local(),
+                Instruction::GetLocal0 => self.handle_get_local0(),
+                Instruction::GetLocal1 => self.handle_get_local1(),
+                Instruction::GetLocal2 => self.handle_get_local2(),
+                Instruction::GetLocal3 => self.handle_get_local3(),
+                Instruction::GetLocal4 => self.handle_get_local4(),
                 Instruction::SetLocal => self.handle_set_local(),
                 Instruction::Void => self.handle_void(),
                 Instruction::DecrementLocal => self.handle_decrement_local(),
                 Instruction::IncrementLocal => self.handle_increment_local(),
                 Instruction::Loop => self.handle_loop(),
                 Instruction::New => self.handle_new(),
-                Instruction::Get => self.handle_get(),
+                Instruction::GetField => self.handle_get_field(),
+                Instruction::SetField => self.handle_set_field(),
+                Instruction::Array => self.handle_array(),
                 Instruction::Halt => {
                     break;
                 }
@@ -517,7 +575,7 @@ impl VirtualMachine {
 
         for i in 0..self.sp {
             if let Value::Object(obj_ptr) = &self.stack[i] {
-                print!("{}, ", obj_ptr.to_string());
+                print!("{}, ", obj_ptr.borrow().to_string());
             } else {
                 print!("{:?}, ", self.stack[i]);
             }

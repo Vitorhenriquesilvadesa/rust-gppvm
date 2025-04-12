@@ -290,7 +290,13 @@ impl IRGenerator {
                 self.generate_get_expr_ir(target, name, kind)
             }
 
-            _ => todo!(),
+            AnnotatedExpression::Set(target, name, value, kind) => {
+                self.generate_set_ir(target, name, value, kind)
+            }
+
+            AnnotatedExpression::List(elements, kind) => { self.generate_list_ir(elements, kind) }
+
+            _ => todo!("Expression IR: {:?} not implemented.", expr),
         }
     }
 
@@ -452,10 +458,23 @@ impl IRGenerator {
         self.current_depth -= 1;
     }
 
-    fn generate_variable_expr_ir(&self, name: &Token, kind: &TypeDescriptor) -> Vec<u8> {
+    fn generate_variable_expr_ir(&mut self, name: &Token, kind: &TypeDescriptor) -> Vec<u8> {
         let index = self.get_in_depth(name.lexeme.clone());
+        let mut code: Vec<u8> = Vec::new();
 
-        vec![Instruction::GetLocal as u8, index as u8]
+        match index {
+            0 => self.emit_instruction(&mut code, Instruction::GetLocal0),
+            1 => self.emit_instruction(&mut code, Instruction::GetLocal1),
+            2 => self.emit_instruction(&mut code, Instruction::GetLocal2),
+            3 => self.emit_instruction(&mut code, Instruction::GetLocal3),
+            4 => self.emit_instruction(&mut code, Instruction::GetLocal4),
+            _ => {
+                self.emit_instruction(&mut code, Instruction::GetLocal);
+                self.emit_byte(&mut code, index as u8);
+            }
+        }
+
+        code
     }
 
     fn generate_return_ir(&mut self, value: &Option<AnnotatedExpression>) -> Vec<u8> {
@@ -691,8 +710,44 @@ impl IRGenerator {
         code.append(&mut self.generate_expr_ir(target));
 
         let field_index = kind.fields[&name.lexeme].id;
-        self.emit_instruction(&mut code, Instruction::Get);
+        self.emit_instruction(&mut code, Instruction::GetField);
         self.emit_byte(&mut code, field_index);
+
+        code
+    }
+
+    fn generate_set_ir(
+        &mut self,
+        target: &AnnotatedExpression,
+        name: &Token,
+        value: &AnnotatedExpression,
+        kind: &TypeDescriptor
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+        let field_index = kind.fields[&name.lexeme].id;
+
+        code.append(&mut self.generate_expr_ir(target));
+        code.append(&mut self.generate_expr_ir(value));
+
+        self.emit_instruction(&mut code, Instruction::SetField);
+        self.emit_byte(&mut code, field_index);
+
+        code
+    }
+
+    fn generate_list_ir(
+        &mut self,
+        elements: &[Box<AnnotatedExpression>],
+        kind: &TypeDescriptor
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+
+        for element in elements {
+            code.append(&mut self.generate_expr_ir(&element));
+        }
+
+        self.emit_instruction(&mut code, Instruction::Array);
+        self.emit_byte(&mut code, elements.len() as u8);
 
         code
     }

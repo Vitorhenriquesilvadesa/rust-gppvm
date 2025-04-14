@@ -24,5 +24,6 @@ pub enum Statement {
     // endregion:  --- Statements
 
     // region:  --- For Compiler
-    EndCode, // endregion:  --- For Compiler
+    EndCode,
+    NativeFunction(Token, Vec<FieldDeclaration>, Expression), // endregion:  --- For Compiler
 }

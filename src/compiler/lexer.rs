@@ -70,6 +70,7 @@ pub enum KeywordKind {
     Let,
     In,
     With,
+    Native,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -157,6 +158,7 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert("in".to_string(), TokenKind::Keyword(KeywordKind::In));
     keywords.insert("with".to_string(), TokenKind::Keyword(KeywordKind::With));
     keywords.insert("return".to_string(), TokenKind::Keyword(KeywordKind::Return));
+    keywords.insert("native".to_string(), TokenKind::Keyword(KeywordKind::Native));
 
     keywords
 }

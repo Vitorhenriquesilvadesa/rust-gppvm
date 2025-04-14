@@ -394,6 +394,7 @@ pub enum AnnotatedExpression {
     Void,
     PostFix(Token, Box<AnnotatedExpression>),
     Set(Box<AnnotatedExpression>, Token, Box<AnnotatedExpression>, TypeDescriptor),
+    ListGet(Box<AnnotatedExpression>, Box<AnnotatedExpression>),
 }
 
 #[derive(Debug, Clone)]
@@ -410,6 +411,7 @@ pub enum AnnotatedStatement {
     While(AnnotatedExpression, Box<AnnotatedStatement>),
     Global,
     EndCode,
+    NativeFunction(FunctionPrototype),
 }
 
 impl SemanticCode {
@@ -485,16 +487,16 @@ impl SemanticAnalyzer {
 
         let kind = self.get_void_instance();
 
-        self.create_and_define_function(
-            "print",
-            vec![
-                FieldDeclaration::new(
-                    Token::new(TokenKind::Identifier, "print".to_string(), 0, 0),
-                    Expression::Void
-                )
-            ],
-            kind.clone()
-        );
+        // self.create_and_define_function(
+        //     "print",
+        //     vec![
+        //         FieldDeclaration::new(
+        //             Token::new(TokenKind::Identifier, "print".to_string(), 0, 0),
+        //             Expression::Void
+        //         )
+        //     ],
+        //     kind.clone()
+        // );
     }
 
     /// Creates valid semantic data for standard native functions,
@@ -655,6 +657,9 @@ impl SemanticAnalyzer {
             }
             Statement::Function(name, params, body, return_kind) => {
                 self.analyze_function(name, params, &body, return_kind)
+            }
+            Statement::NativeFunction(name, params, return_kind) => {
+                self.analyze_native_function(name, params, return_kind)
             }
             Statement::Variable(name, value) => self.analyze_variable_declaration(name, value),
             Statement::ForEach(variable, condition, body) => {
@@ -1276,6 +1281,7 @@ impl SemanticAnalyzer {
             Expression::TypeComposition(names) => todo!(),
             Expression::Attribute(token, expressions) => todo!(),
             Expression::Group(expression) => self.analyze_expr(&expression),
+            Expression::ListGet(expression, index) => self.analyze_list_get_expr(expression, index),
         }
     }
 
@@ -1528,6 +1534,7 @@ impl SemanticAnalyzer {
             Expression::Get(object, token) => self.resolve_get_expr(object, token),
             Expression::Group(expression) => self.resolve_expr_type(&expression),
             Expression::Void => self.get_void_instance(),
+            Expression::ListGet(list, index) => self.resolve_list_get_type(list, index),
             _ => gpp_error!("Expression {expression:?} are not supported."),
         }
     }
@@ -2780,5 +2787,64 @@ impl SemanticAnalyzer {
             Box::new(annotated_value),
             target_kind
         )
+    }
+
+    fn analyze_list_get_expr(
+        &mut self,
+        expression: Box<Expression>,
+        index: Box<Expression>
+    ) -> AnnotatedExpression {
+        let annotated_expression = self.analyze_expr(&expression);
+        let annotated_index = self.analyze_expr(&index);
+
+        AnnotatedExpression::ListGet(Box::new(annotated_expression), Box::new(annotated_index))
+    }
+
+    fn resolve_list_get_type(&mut self, list: &Expression, index: &Expression) -> TypeDescriptor {
+        self.resolve_expr_type(list)
+    }
+
+    fn analyze_native_function(
+        &mut self,
+        name: &Token,
+        params: &Vec<FieldDeclaration>,
+        return_kind: &Expression
+    ) -> AnnotatedStatement {
+        self.require_depth(
+            Ordering::Less,
+            1,
+            format!("Functions are only allowed in top level code. At line {}.", name.line)
+        );
+
+        self.current_symbol_kind = SymbolKind::Function;
+
+        let mut kind: TypeDescriptor;
+
+        if let Expression::TypeComposition(mask) = return_kind {
+            kind = self.resolve_type_composition(mask);
+        } else {
+            kind = self.get_static_kind("void");
+
+            self.report_error(
+                CompilationError::new("Missing function return kind.".to_string(), Some(name.line))
+            );
+        }
+
+        let function_definition = FunctionPrototype::new(
+            name.lexeme.clone(),
+            params.clone(),
+            params.len(),
+            kind.clone()
+        );
+
+        self.define_native_function(name.lexeme.clone(), function_definition.clone());
+
+        self.current_symbol = name.lexeme.clone();
+
+        AnnotatedStatement::NativeFunction(function_definition)
+    }
+
+    fn define_native_function(&mut self, name: String, value: FunctionPrototype) {
+        self.symbol_table.native_functions.insert(name, value);
     }
 }

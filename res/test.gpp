@@ -1,20 +1,29 @@
-type Vec3 {
-    x: float,
-    y: float,
-    z: float,
-}
+// Compiler built-in functions will be moved to prelude std files in the future.
+native def print(x: object) -> void;
+native def input() -> str;
+native def int(x: str) -> int;
+native def float(x: str) -> float;
+native def random_range(low: int, high: int) -> int;
+native def len(x: list) -> int;
+native def append(x: list, value: object) -> void;
 
-def origin() -> Vec3 {
-    return Vec3(0.0, 0.0, 0.0);
-}
-
-type Transform {
-    position: Vec3,
-    rotation: Vec3,
-}
 
 def main() -> void {
-    let nums = [[1, 2, 3], [1, 2, 3], [1, 2, 3]];
+    let secret_number = random_range(0, 100);
+    print("Adivinhe o numero secreto");
 
-    print(nums);
+    let answer = -1;
+    
+    while not (answer == secret_number) {
+        let i = input();
+        answer = int(i);
+
+        if answer > secret_number {
+            print("O numero secreto e menor");
+        } else if answer < secret_number {
+            print("O numero secreto e maior");
+        }
+    }
+
+    print("Acertou");
 }

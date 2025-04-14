@@ -8,6 +8,10 @@ pub struct Decompiler {}
 
 impl Decompiler {
     pub fn decompile(code: &IntermediateCode) {
+        for (name, info) in &code.native_functions {
+            Decompiler::decompile_native_function(name, info.id);
+        }
+
         for (name, function) in &code.functions {
             let width = 60;
             println!(
@@ -47,8 +51,8 @@ impl Decompiler {
         match Instruction::try_from(code[*index]) {
             Ok(instruction) => {
                 let instruction_name = format!("{:?}", instruction).to_lowercase();
-                let padded_instruction = format!("{:<10}", instruction_name);
-                let instr_index = format!("{:02}", index);
+                let padded_instruction = format!("{:<15}", instruction_name);
+                let instr_index = format!("{:03}", index);
 
                 match instruction {
                     Instruction::Push => {
@@ -67,7 +71,7 @@ impl Decompiler {
                         *index += 1;
                     }
 
-                    Instruction::Call | Instruction::InvokeNative | Instruction::InvokeVirtual => {
+                    Instruction::Call | Instruction::InvokeVirtual => {
                         let function_index = Decompiler::combine_u8_to_u32(
                             code[*index + 1],
                             code[*index + 2],
@@ -83,6 +87,26 @@ impl Decompiler {
                             padded_instruction,
                             function_index,
                             ir.graph.inverse_connections[&function_index],
+                            arity
+                        );
+                        *index += 5;
+                    }
+
+                    Instruction::InvokeNative => {
+                        let function_index = Decompiler::combine_u8_to_u32(
+                            code[*index + 1],
+                            code[*index + 2],
+                            code[*index + 3],
+                            code[*index + 4]
+                        );
+
+                        let arity = code[*index + 5];
+
+                        println!(
+                            "{}  {} {}   ; ({} args)",
+                            instr_index,
+                            padded_instruction,
+                            function_index,
                             arity
                         );
                         *index += 5;
@@ -125,5 +149,12 @@ impl Decompiler {
         }
 
         *index += 1;
+    }
+
+    fn decompile_native_function(name: &str, id: u32) {
+        let width = 60;
+        println!("{}", format!("{:=^1$}", format!(" {} (native_id = {}) ", name, id), width));
+        println!("{}", "=".repeat(width));
+        println!("\n");
     }
 }

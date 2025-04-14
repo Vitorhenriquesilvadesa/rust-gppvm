@@ -74,6 +74,6 @@ pub enum Instruction {
     Void,
     DecrementLocal,
     New,
-    __Count,
     Array,
+    __Count,
 }

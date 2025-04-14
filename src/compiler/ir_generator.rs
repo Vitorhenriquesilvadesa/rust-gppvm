@@ -4,6 +4,7 @@ use crate::gpp_error;
 
 use super::{
     ast::FieldDeclaration,
+    bytecode_gen::NativeFunctionInfo,
     chunk::{ CompileTimeChunk, CompileTimeValue },
     errors::CompilerErrorReporter,
     instructions::Instruction,
@@ -65,10 +66,12 @@ pub struct IRGenerator {
     reporter: Rc<RefCell<CompilerErrorReporter>>,
     top_level_graph: CodeGraph,
     pub functions: HashMap<String, IRFunction>,
+    pub native_functions: HashMap<String, NativeFunctionInfo>,
     pub kinds: HashMap<String, IRType>,
     current_chunk: CompileTimeChunk,
     local_values: CompileTimeStack,
     current_depth: u32,
+    current_native_id: u32,
 }
 
 impl IRGenerator {
@@ -82,6 +85,8 @@ impl IRGenerator {
             current_chunk: CompileTimeChunk::empty(),
             current_depth: 0,
             local_values: CompileTimeStack::new(),
+            current_native_id: 0,
+            native_functions: HashMap::new(),
         }
     }
 
@@ -93,7 +98,7 @@ impl IRGenerator {
         self.semantic_code = semantic_code.clone();
         self.reporter = reporter;
 
-        self.generate_standard_native_functions();
+        // self.generate_standard_native_functions();
 
         for annotated_stmt in self.semantic_code.ast.statements.clone() {
             self.generate_ir_for(&annotated_stmt);
@@ -101,6 +106,7 @@ impl IRGenerator {
 
         IntermediateCode::new(
             self.functions.clone(),
+            self.native_functions.clone(),
             self.kinds.clone(),
             self.top_level_graph.clone()
         )
@@ -120,6 +126,9 @@ impl IRGenerator {
             AnnotatedStatement::ForEach(variable, condition, body) => { vec![] }
             AnnotatedStatement::Function(prototype, body) => {
                 self.generate_function_ir(prototype, body)
+            }
+            AnnotatedStatement::NativeFunction(prototype) => {
+                self.generate_native_function_ir(prototype)
             }
             AnnotatedStatement::Global => { vec![] }
             AnnotatedStatement::If(keyword, condition, then_branch, else_branch) => {
@@ -271,7 +280,7 @@ impl IRGenerator {
             }
 
             AnnotatedExpression::CallNative(proto, callee, args, kind) => {
-                self.generate_call_expr_ir(proto, callee, args, kind)
+                self.generate_call_native_expr_ir(proto, callee, args, kind)
             }
 
             AnnotatedExpression::Assign(name, value, kind) => {
@@ -295,6 +304,8 @@ impl IRGenerator {
             }
 
             AnnotatedExpression::List(elements, kind) => { self.generate_list_ir(elements, kind) }
+
+            AnnotatedExpression::ListGet(list, index) => self.generate_list_get_ir(list, index),
 
             _ => todo!("Expression IR: {:?} not implemented.", expr),
         }
@@ -460,6 +471,7 @@ impl IRGenerator {
 
     fn generate_variable_expr_ir(&mut self, name: &Token, kind: &TypeDescriptor) -> Vec<u8> {
         let index = self.get_in_depth(name.lexeme.clone());
+
         let mut code: Vec<u8> = Vec::new();
 
         match index {
@@ -519,6 +531,35 @@ impl IRGenerator {
             code.push(index_bytes.2);
             code.push(index_bytes.3);
         }
+
+        code.push(proto.arity as u8);
+
+        code
+    }
+
+    fn generate_call_native_expr_ir(
+        &mut self,
+        proto: &FunctionPrototype,
+        callee: &Token,
+        args: &[Box<AnnotatedExpression>],
+        kind: &TypeDescriptor
+    ) -> Vec<u8> {
+        let mut code = Vec::new();
+        let function_table_index = self.native_functions[&proto.name].id;
+
+        for arg in args {
+            let mut arg_code = self.generate_expr_ir(arg);
+            code.append(&mut arg_code);
+        }
+
+        code.push(Instruction::InvokeNative as u8);
+
+        let index_bytes = self.split_u32(function_table_index);
+
+        code.push(index_bytes.0);
+        code.push(index_bytes.1);
+        code.push(index_bytes.2);
+        code.push(index_bytes.3);
 
         code.push(proto.arity as u8);
 
@@ -751,6 +792,37 @@ impl IRGenerator {
 
         code
     }
+
+    fn generate_list_get_ir(
+        &mut self,
+        list: &AnnotatedExpression,
+        index: &AnnotatedExpression
+    ) -> Vec<u8> {
+        let mut code: Vec<u8> = Vec::new();
+
+        code.append(&mut self.generate_expr_ir(list));
+        code.append(&mut self.generate_expr_ir(index));
+        self.emit_instruction(&mut code, Instruction::ListGet);
+
+        code
+    }
+
+    fn generate_native_function_ir(&mut self, prototype: &FunctionPrototype) -> Vec<u8> {
+        let id = self.get_native_id();
+        self.native_functions.insert(
+            prototype.name.clone(),
+            NativeFunctionInfo::new(prototype.arity as u8, id)
+        );
+
+        vec![]
+    }
+
+    fn get_native_id(&mut self) -> u32 {
+        let id = self.current_native_id;
+        self.current_native_id += 1;
+
+        id
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -808,6 +880,7 @@ impl CodeGraph {
 #[derive(Debug, Clone)]
 pub struct IntermediateCode {
     pub functions: HashMap<String, IRFunction>,
+    pub native_functions: HashMap<String, NativeFunctionInfo>,
     pub kinds: HashMap<String, IRType>,
     pub graph: CodeGraph,
 }
@@ -815,13 +888,10 @@ pub struct IntermediateCode {
 impl IntermediateCode {
     pub fn new(
         functions: HashMap<String, IRFunction>,
+        native_functions: HashMap<String, NativeFunctionInfo>,
         kinds: HashMap<String, IRType>,
         graph: CodeGraph
     ) -> Self {
-        Self {
-            functions,
-            kinds,
-            graph,
-        }
+        Self { functions, native_functions, kinds, graph }
     }
 }

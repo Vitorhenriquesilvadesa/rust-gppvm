@@ -18,15 +18,32 @@ impl VirtualFunction {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NativeFunctionInfo {
+    pub arity: u8,
+    pub id: u32,
+}
+
+impl NativeFunctionInfo {
+    pub fn new(arity: u8, id: u32) -> Self {
+        Self { arity, id }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Bytecode {
     functions: HashMap<u32, VirtualFunction>,
+    pub native_functions: HashMap<String, NativeFunctionInfo>,
     pub main: Option<VirtualFunction>,
 }
 
 impl Bytecode {
-    pub fn new(functions: HashMap<u32, VirtualFunction>, main: Option<VirtualFunction>) -> Self {
-        Self { functions, main }
+    pub fn new(
+        functions: HashMap<u32, VirtualFunction>,
+        native_functions: HashMap<String, NativeFunctionInfo>,
+        main: Option<VirtualFunction>
+    ) -> Self {
+        Self { functions, native_functions, main }
     }
 
     pub(crate) fn get_function(&self, function_id: u32) -> Rc<Chunk> {
@@ -81,6 +98,6 @@ impl BytecodeGenerator {
             }
         }
 
-        Bytecode::new(functions, main)
+        Bytecode::new(functions, ir.native_functions.clone(), main)
     }
 }

@@ -1,5 +1,7 @@
 use std::{ fmt::{ self, Display }, rc::Rc };
 
+use crate::compiler::expressions;
+
 use super::lexer::Token;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +24,7 @@ pub enum Expression {
     Attribute(Token, Vec<Rc<Expression>>),
     Group(Rc<Expression>),
     Void,
+    ListGet(Box<Expression>, Box<Expression>),
 }
 
 impl Display for Expression {
@@ -38,6 +41,8 @@ impl Display for Expression {
             Expression::Assign(var, expr) => write!(f, "({} = {})", var, expr),
             Expression::Lambda => write!(f, "(lambda)"),
             Expression::Get(object, field) => write!(f, "Get({}.{})", object, field),
+            Expression::ListGet(expression, index) =>
+                write!(f, "ListGet({}.{})", expression, index),
             Expression::Set(object, field, value) => {
                 write!(f, "Set({}.{} = {})", object, field, value)
             }

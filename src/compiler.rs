@@ -26,6 +26,7 @@ use std::{ env, fs };
 use std::{ error::Error, io::{ self, Read } };
 
 use crate::read_file_without_bom;
+use crate::runtime::stdlib::StdLibrary;
 use crate::runtime::virtual_machine::VirtualMachine;
 
 use self::{ lexer::Lexer, parser::Parser };
@@ -108,7 +109,9 @@ impl Compiler {
         let bytecode = bytecode_generator.generate(&ir_code);
 
         let mut vm = VirtualMachine::new();
-        vm.interpret(&bytecode);
+        vm.attach_bytecode(&bytecode);
+        vm.load_library(&mut StdLibrary::get_lib());
+        vm.interpret();
 
         for error in self.reporter.borrow().get_errors() {
             eprintln!("Error: {} At line {:?}.", error.msg, error.line);

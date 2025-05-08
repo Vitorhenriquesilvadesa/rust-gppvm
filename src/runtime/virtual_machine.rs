@@ -1,6 +1,6 @@
 use std::{ cell::RefCell, rc::Rc };
 use core::fmt::Debug;
-use crate::compiler::{ bytecode_gen::Bytecode, instructions::Instruction };
+use crate::{ compiler::{ bytecode_gen::Bytecode, instructions::Instruction }, gpp_error };
 use super::{
     ffi::{ NativeBridge, NativeFnPtr, NativeFunction, NativeLibrary },
     objects::{ Instance, List, Value },
@@ -55,9 +55,17 @@ pub struct VirtualMachine {
 
 impl NativeBridge for VirtualMachine {
     fn bind(&mut self, name: &str, func: NativeFnPtr) {
-        let func_info = &self.bytecode.as_ref().unwrap().native_functions[name];
-        let index = func_info.id;
-        self.native_functions[index as usize] = NativeFunction::new(func, func_info.arity);
+        let func_info = &self.bytecode.as_ref().unwrap().native_functions.get(name);
+
+        match func_info {
+            Some(info) => {
+                let index = info.id;
+                self.native_functions[index as usize] = NativeFunction::new(func, info.arity);
+            }
+
+            None =>
+                gpp_error!("Linkage of '{}' function failed. Can't found native definition.", name),
+        }
     }
 }
 

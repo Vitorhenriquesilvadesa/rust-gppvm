@@ -21,3 +21,12 @@ pub trait NativeBridge {
 pub trait NativeLibrary {
     fn register_functions(&self, bridge: &mut dyn NativeBridge);
 }
+
+#[macro_export]
+macro_rules! register_native_funcs {
+    ($bridge:expr, [$($name:ident),* $(,)?]) => {
+        $(
+            $bridge.bind(stringify!($name), Self::$name);
+        )*
+    };
+}

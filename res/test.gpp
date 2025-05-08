@@ -1,17 +1,19 @@
 // Compiler built-in functions will be moved to prelude std files in the future.
-native def print(x: object) -> void;
 native def input() -> str;
-native def int(x: str) -> int;
+native def print(x: object) -> void;
 native def float(x: str) -> float;
-native def random_range(low: int, high: int) -> int;
 native def len(x: list) -> int;
+native def int(x: str) -> int;
+native def random_range(low: int, high: int) -> int;
 native def append(x: list, value: object) -> void;
+native def args() -> list;
+native def exit(code: int) -> void;
+native def test() -> void;
 
 
 def main() -> void {
     let secret_number = random_range(0, 100);
     print("Adivinhe o numero secreto");
-
     let answer = -1;
     
     while not (answer == secret_number) {

@@ -14,15 +14,15 @@ Here’s an overview of the current implementation progress:
 - [ ] Bytecode Emitter
 
 ### Virtual Machine
-- [ ] Stack-Based Architecture
+- [X] Stack-Based Architecture
 - [ ] Bytecode Execution Engine
-- [ ] Built-in Object System
+- [X] Built-in Object System
 - [ ] Garbage Collector
 - [ ] Debugger / Stack Traces
 - [ ] Minimal Standard Library
 
 ### Tooling
-- [ ] Plugin Loader System
+- [X] Plugin Loader System
 - [ ] Command-line Interface (CLI)
 - [ ] Configuration File Parsing (`gppvm.toml`)
 - [ ] LSP Support (Syntax + Type Hints)
@@ -30,6 +30,6 @@ Here’s an overview of the current implementation progress:
 
 ### Documentation & Examples
 - [ ] Language Reference Guide
-- [ ] Bytecode Format Specification
-- [ ] Plugin Development Guide
+- [X] Bytecode Format Specification
+- [X] Plugin Development Guide
 - [ ] Example Programs

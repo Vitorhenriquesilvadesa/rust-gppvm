@@ -2801,7 +2801,11 @@ impl SemanticAnalyzer {
     }
 
     fn resolve_list_get_type(&mut self, list: &Expression, index: &Expression) -> TypeDescriptor {
-        self.resolve_expr_type(list)
+        match list {
+            Expression::List(elements) => { self.resolve_list_type(elements) }
+            Expression::Variable(name) => { self.resolve_identifier_type(name) }
+            _ => gpp_error!("Cannot resolve list type for {}.", list),
+        }
     }
 
     fn analyze_native_function(

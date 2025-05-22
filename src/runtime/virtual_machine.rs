@@ -1,10 +1,13 @@
-use std::{ cell::RefCell, rc::Rc };
-use core::fmt::Debug;
-use crate::{ compiler::{ bytecode_gen::Bytecode, instructions::Instruction }, gpp_error };
 use super::{
-    ffi::{ NativeBridge, NativeFnPtr, NativeFunction, NativeLibrary },
-    objects::{ Instance, List, Value },
+    ffi::{NativeBridge, NativeFnPtr, NativeFunction, NativeLibrary},
+    objects::{Instance, List, Value},
 };
+use crate::{
+    compiler::{bytecode_gen::Bytecode, instructions::Instruction},
+    gpp_error,
+};
+use core::fmt::Debug;
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug)]
 pub struct Chunk {
@@ -27,7 +30,12 @@ struct Frame {
 
 impl Frame {
     fn new(chunk: Rc<Chunk>) -> Self {
-        Self { chunk, sp: 0, ip: 0, fp: 0 }
+        Self {
+            chunk,
+            sp: 0,
+            ip: 0,
+            fp: 0,
+        }
     }
 
     pub fn set_ip(&mut self, ip: usize) {
@@ -63,8 +71,10 @@ impl NativeBridge for VirtualMachine {
                 self.native_functions[index as usize] = NativeFunction::new(func, info.arity);
             }
 
-            None =>
-                gpp_error!("Linkage of '{}' function failed. Can't found native definition.", name),
+            None => gpp_error!(
+                "Linkage of '{}' function failed. Can't found native definition.",
+                name
+            ),
         }
     }
 }
@@ -174,11 +184,9 @@ impl VirtualMachine {
     pub fn handle_push(&mut self) {
         let constant_index = self.read_u16();
 
-        let constant = self.frame_stack
-            .last()
-            .unwrap()
-            .borrow()
-            .chunk.constants[constant_index as usize].clone();
+        let constant = self.frame_stack.last().unwrap().borrow().chunk.constants
+            [constant_index as usize]
+            .clone();
 
         self.push(constant);
     }
@@ -325,7 +333,8 @@ impl VirtualMachine {
                     .as_any()
                     .downcast_ref::<Instance>()
                     .unwrap()
-                    .fields[index as usize].clone()
+                    .fields[index as usize]
+                    .clone(),
             );
         }
     }
@@ -336,9 +345,12 @@ impl VirtualMachine {
         let index = self.read_byte();
 
         if let Value::Object(obj_ptr) = &object {
-            obj_ptr.borrow_mut().as_any_mut().downcast_mut::<Instance>().unwrap().fields[
-                index as usize
-            ] = value;
+            obj_ptr
+                .borrow_mut()
+                .as_any_mut()
+                .downcast_mut::<Instance>()
+                .unwrap()
+                .fields[index as usize] = value;
         }
     }
 
@@ -574,14 +586,17 @@ impl VirtualMachine {
     }
 
     fn invalidate_native_call(args: Vec<Value>) -> Value {
-        panic!("Invalid native call index");
+        println!("Invalid native call index!");
+        std::process::exit(0);
     }
 
     pub fn attach_bytecode(&mut self, bytecode: &Bytecode) {
         self.bytecode = Some(bytecode.clone());
         self.attach_main_fn();
-        self.native_functions =
-            vec![NativeFunction { handler: Self::invalidate_native_call, arity: 0 }; bytecode.native_functions.len()];
+        self.native_functions = vec![
+            NativeFunction::new(Self::invalidate_native_call, 0);
+            bytecode.native_functions.len()
+        ];
     }
 
     pub fn interpret(&mut self) {
@@ -660,11 +675,10 @@ impl VirtualMachine {
         let byte3 = self.read_byte();
         let byte4 = self.read_byte();
 
-        let value =
-            ((byte1 as u32) << 24) |
-            ((byte2 as u32) << 16) |
-            ((byte3 as u32) << 8) |
-            (byte4 as u32);
+        let value = ((byte1 as u32) << 24)
+            | ((byte2 as u32) << 16)
+            | ((byte3 as u32) << 8)
+            | (byte4 as u32);
         value
     }
 
@@ -706,7 +720,11 @@ impl VirtualMachine {
         let chunk = code.unwrap().get_function(function_id);
         let frame = Frame::new(chunk);
 
-        self.frame_stack.last().unwrap().borrow_mut().set_ip(self.ip);
+        self.frame_stack
+            .last()
+            .unwrap()
+            .borrow_mut()
+            .set_ip(self.ip);
         self.frame_stack
             .last()
             .unwrap()

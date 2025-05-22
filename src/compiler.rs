@@ -1,17 +1,18 @@
 #![allow(warnings)]
 
+mod ast;
+mod attributes;
+pub mod bytecode_gen;
+mod chunk;
+mod decompiler;
 mod errors;
+mod expressions;
+pub mod instructions;
+mod ir_generator;
 mod lexer;
 mod parser;
 mod semantics;
 mod statements;
-mod expressions;
-mod ir_generator;
-pub mod bytecode_gen;
-pub mod instructions;
-mod ast;
-mod chunk;
-mod decompiler;
 
 use bytecode_gen::BytecodeGenerator;
 use decompiler::Decompiler;
@@ -22,14 +23,17 @@ use semantics::SemanticAnalyzer;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
-use std::{ env, fs };
-use std::{ error::Error, io::{ self, Read } };
+use std::{env, fs};
+use std::{
+    error::Error,
+    io::{self, Read},
+};
 
 use crate::read_file_without_bom;
 use crate::runtime::stdlib::StdLibrary;
 use crate::runtime::virtual_machine::VirtualMachine;
 
-use self::{ lexer::Lexer, parser::Parser };
+use self::{lexer::Lexer, parser::Parser};
 
 pub struct CompilerArguments {
     args: Vec<String>,
@@ -44,8 +48,7 @@ impl CompilerArguments {
 pub fn run(config: CompilerArguments) -> Result<(), String> {
     let path = format!(
         "{}\\{}",
-        env
-            ::current_dir()
+        env::current_dir()
             .map_err(|e| e.to_string())?
             .to_str()
             .unwrap_or(""),
@@ -97,11 +100,12 @@ impl Compiler {
 
         let stmts = self.parser.parse(Rc::clone(&self.reporter), tokens.clone());
 
-        let semantic_code = self.semantic_analyzer.analyze(
-            Rc::clone(&self.reporter),
-            stmts.clone()
-        );
-        let ir_code = self.ir_generator.generate(Rc::clone(&self.reporter), &semantic_code);
+        let semantic_code = self
+            .semantic_analyzer
+            .analyze(Rc::clone(&self.reporter), stmts.clone());
+        let ir_code = self
+            .ir_generator
+            .generate(Rc::clone(&self.reporter), &semantic_code);
 
         Decompiler::decompile(&ir_code);
 

@@ -12,20 +12,9 @@ native def test() -> void;
 
 
 def main() -> void {
-    let secret_number = random_range(0, 100);
-    print("Adivinhe o numero secreto");
-    let answer = -1;
-    
-    while not (answer == secret_number) {
-        let i = input();
-        answer = int(i);
+    let i = 0;
 
-        if answer > secret_number {
-            print("O numero secreto e menor");
-        } else if answer < secret_number {
-            print("O numero secreto e maior");
-        }
+    while i < 100000000 {
+        i++;
     }
-
-    print("Acertou");
 }

@@ -1,10 +1,13 @@
-use std::{ cell::RefCell, env, io::stdin, rc::Rc };
+use std::{cell::RefCell, env, io::stdin, rc::Rc};
 
 use rand::Rng;
 
 use crate::register_native_funcs;
 
-use super::{ ffi::{ NativeBridge, NativeLibrary }, objects::{ List, Value } };
+use super::{
+    ffi::{NativeBridge, NativeLibrary},
+    objects::{List, Value},
+};
 
 pub struct StdLibrary;
 
@@ -22,7 +25,9 @@ impl StdLibrary {
         match &args[0] {
             Value::String(s) => Value::Int(s.trim().parse().expect("str to int parse error.")),
             Value::Int(i) => Value::Int(*i),
-            _ => { unreachable!() }
+            _ => {
+                unreachable!()
+            }
         }
     }
 
@@ -35,12 +40,16 @@ impl StdLibrary {
     }
 
     fn bool(args: Vec<Value>) -> Value {
-        if let Value::Bool(b) = &args[0] { Value::Bool(*b) } else { unreachable!() }
+        if let Value::Bool(b) = &args[0] {
+            Value::Bool(*b)
+        } else {
+            unreachable!()
+        }
     }
 
     fn random_range(args: Vec<Value>) -> Value {
         match (&args[0], &args[1]) {
-            (Value::Int(a), Value::Int(b)) => { Value::Int(rand::thread_rng().gen_range(*a..*b)) }
+            (Value::Int(a), Value::Int(b)) => Value::Int(rand::thread_rng().gen_range(*a..*b)),
             _ => unreachable!(),
         }
     }
@@ -61,7 +70,13 @@ impl StdLibrary {
 
     fn len(args: Vec<Value>) -> Value {
         if let Value::Object(obj_ptr) = &args[0] {
-            let len = obj_ptr.borrow().as_any().downcast_ref::<List>().unwrap().elements.len();
+            let len = obj_ptr
+                .borrow()
+                .as_any()
+                .downcast_ref::<List>()
+                .unwrap()
+                .elements
+                .len();
             return Value::Int(len as i32);
         }
 
@@ -89,7 +104,8 @@ impl StdLibrary {
                 .as_any_mut()
                 .downcast_mut::<List>()
                 .unwrap()
-                .elements.push(value.clone());
+                .elements
+                .push(value.clone());
 
             return Value::Void;
         }
@@ -100,16 +116,19 @@ impl StdLibrary {
 
 impl NativeLibrary for StdLibrary {
     fn register_functions(&self, bridge: &mut dyn NativeBridge) {
-        register_native_funcs!(bridge, [
-            print,
-            input,
-            int,
-            float,
-            random_range,
-            len,
-            append,
-            args,
-            exit,
-        ]);
+        register_native_funcs!(
+            bridge,
+            [
+                print,
+                input,
+                int,
+                float,
+                random_range,
+                len,
+                append,
+                args,
+                exit,
+            ]
+        );
     }
 }

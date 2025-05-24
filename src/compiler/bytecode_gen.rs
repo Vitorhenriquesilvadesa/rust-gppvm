@@ -1,6 +1,12 @@
-use std::{ cmp::Ordering, collections::HashMap, rc::Rc };
+use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
-use crate::{ gpp_error, runtime::{ objects::{ Object, Value }, virtual_machine::Chunk } };
+use crate::{
+    gpp_error,
+    runtime::{
+        objects::{Object, Value},
+        virtual_machine::Chunk,
+    },
+};
 
 use super::ir_generator::IntermediateCode;
 
@@ -41,9 +47,13 @@ impl Bytecode {
     pub fn new(
         functions: HashMap<u32, VirtualFunction>,
         native_functions: HashMap<String, NativeFunctionInfo>,
-        main: Option<VirtualFunction>
+        main: Option<VirtualFunction>,
     ) -> Self {
-        Self { functions, native_functions, main }
+        Self {
+            functions,
+            native_functions,
+            main,
+        }
     }
 
     pub(crate) fn get_function(&self, function_id: u32) -> Rc<Chunk> {

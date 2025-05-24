@@ -11,6 +11,7 @@ pub mod instructions;
 mod ir_generator;
 mod lexer;
 mod parser;
+mod semantic_types;
 mod semantics;
 mod statements;
 
@@ -47,11 +48,12 @@ impl CompilerArguments {
 
 pub fn run(config: CompilerArguments) -> Result<(), String> {
     let path = format!(
-        "{}\\{}",
+        "{}{}{}",
         env::current_dir()
             .map_err(|e| e.to_string())?
             .to_str()
             .unwrap_or(""),
+        std::path::MAIN_SEPARATOR,
         config.args[1].as_str()
     );
 
@@ -69,7 +71,7 @@ pub fn run(config: CompilerArguments) -> Result<(), String> {
     let start = Instant::now();
     compiler.compile(source);
 
-    // println!("Compiler took: {:?}", start.elapsed());
+    println!("Compiler took: {:?}", start.elapsed());
 
     Ok(())
 }

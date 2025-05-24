@@ -20,290 +20,9 @@ use super::{
     errors::{CompilationError, CompilerErrorReporter},
     expressions::Expression,
     lexer::{Literal, OperatorKind, PunctuationKind, Token, TokenKind},
+    semantic_types::*,
     statements::Statement,
 };
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeComposition {
-    mask: Vec<TypeDecl>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ObjectDescriptor {
-    fields: HashMap<String, TypeComposition>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Value {
-    Int(i32),
-    Float(f32),
-    Boolean(bool),
-    String(String),
-    Object(ObjectDescriptor),
-    Kind,
-    Internal,
-}
-
-impl Value {
-    pub fn boolean(value: bool) -> Self {
-        Value::Boolean(value)
-    }
-
-    pub fn float(value: f32) -> Self {
-        Value::Float(value)
-    }
-
-    pub fn int(value: i32) -> Self {
-        Value::Int(value)
-    }
-
-    pub fn as_int(&self) -> Option<i32> {
-        if let Value::Int(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_float(&self) -> Option<f32> {
-        if let Value::Float(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_boolean(&self) -> Option<bool> {
-        if let Value::Boolean(v) = self {
-            Some(*v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_object(&self) -> Option<ObjectDescriptor> {
-        if let Value::Object(v) = self {
-            Some(v.clone())
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Hash, Eq)]
-struct Archetype {
-    name: String,
-}
-
-impl std::fmt::Debug for Archetype {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name)
-    }
-}
-
-impl Display for Archetype {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-impl Archetype {
-    fn new(name: String) -> Self {
-        Self { name }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldDescriptor {
-    pub name: String,
-    pub kind: TypeDescriptor,
-    pub id: u8,
-}
-
-impl FieldDescriptor {
-    pub fn new(name: String, kind: TypeDescriptor, id: u8) -> Self {
-        Self { name, kind, id }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeDescriptor {
-    pub name: String,
-    pub id: u32,
-    pub archetypes: HashSet<Archetype>,
-    pub fields: HashMap<String, FieldDescriptor>,
-}
-
-impl TypeDescriptor {
-    pub fn new(
-        name: String,
-        archetypes: HashSet<Archetype>,
-        fields: HashMap<String, FieldDescriptor>,
-        id: u32,
-    ) -> Self {
-        Self {
-            name,
-            archetypes,
-            fields,
-            id,
-        }
-    }
-
-    pub fn from_type_decl(decl: TypeDecl) -> Self {
-        Self {
-            archetypes: decl.archetypes,
-            fields: HashMap::new(),
-            name: decl.name,
-            id: decl.kind_id,
-        }
-    }
-
-    pub fn from_type_decl_with_fields(
-        decl: TypeDecl,
-        fields: HashMap<String, FieldDescriptor>,
-    ) -> Self {
-        Self {
-            archetypes: decl.archetypes,
-            fields,
-            name: decl.name,
-            id: decl.kind_id,
-        }
-    }
-
-    fn implements_archetype(&self, archetype: &Archetype) -> bool {
-        self.archetypes.contains(archetype)
-    }
-
-    fn empty() -> TypeDescriptor {
-        TypeDescriptor {
-            name: String::new(),
-            id: 0,
-            archetypes: HashSet::new(),
-            fields: HashMap::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TypeDecl {
-    name: String,
-    kind_id: u32,
-    archetypes: HashSet<Archetype>,
-}
-
-impl TypeDecl {
-    fn new(name: String, kind_id: u32) -> Self {
-        Self {
-            name,
-            kind_id,
-            archetypes: HashSet::new(),
-        }
-    }
-
-    fn implements_archetype(&self, arch: &Archetype) -> bool {
-        self.archetypes.contains(arch)
-    }
-
-    fn add_archetype(&mut self, arch: Archetype) {
-        self.archetypes.insert(arch);
-    }
-}
-
-#[derive(Clone, Debug)]
-struct SemanticValue {
-    kind: Option<TypeDescriptor>,
-    value: Value,
-    line: usize,
-}
-
-impl SemanticValue {
-    fn new(kind: Option<TypeDescriptor>, value: Value, line: usize) -> Self {
-        Self { kind, value, line }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct StaticValue {
-    kind: TypeDescriptor,
-    value: Value,
-}
-
-impl StaticValue {
-    fn new(kind: TypeDescriptor, value: Value) -> Self {
-        Self { kind, value }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ContextScope {
-    names: HashMap<String, SemanticValue>,
-}
-
-impl ContextScope {
-    fn new() -> Self {
-        Self {
-            names: HashMap::new(),
-        }
-    }
-
-    pub fn contains_name(&self, name: &String) -> bool {
-        self.names.contains_key(name)
-    }
-
-    fn name(&self, name: &String) -> Option<SemanticValue> {
-        if self.contains_name(name) {
-            Some(self.names.get(name).unwrap().clone())
-        } else {
-            None
-        }
-    }
-
-    fn set_infered_kind(&mut self, name: &String, kind: TypeDescriptor) {
-        self.names.get_mut(name).unwrap().kind = Some(kind);
-    }
-
-    fn declare_name(&mut self, name: &str, value: SemanticValue) {
-        self.names.insert(name.to_string().clone(), value);
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ContextStack {
-    scopes: Vec<ContextScope>,
-}
-
-impl ContextStack {
-    fn new() -> Self {
-        Self { scopes: Vec::new() }
-    }
-
-    pub fn push_empty(&mut self) {
-        self.scopes.push(ContextScope::new());
-    }
-
-    pub fn pop(&mut self) {
-        self.scopes.pop();
-    }
-
-    pub fn len(&self) -> usize {
-        self.scopes.len()
-    }
-
-    fn peek(&mut self) -> &mut ContextScope {
-        self.scopes.last_mut().unwrap()
-    }
-
-    fn get(&mut self, i: usize) -> &mut ContextScope {
-        self.scopes.get_mut(i).unwrap()
-    }
-}
-
-#[derive(Eq, PartialEq)]
-enum SymbolKind {
-    Function,
-    Kind,
-    None,
-}
 
 pub struct SemanticAnalyzer {
     statements: Vec<Statement>,
@@ -316,164 +35,6 @@ pub struct SemanticAnalyzer {
     reporter: Rc<RefCell<CompilerErrorReporter>>,
     void_instance: TypeDescriptor,
     default_attributes: DefaultAttributes,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FunctionPrototype {
-    pub name: String,
-    pub params: Vec<FieldDeclaration>,
-    pub arity: usize,
-    pub return_kind: TypeDescriptor,
-}
-
-impl FunctionPrototype {
-    pub fn new(
-        name: String,
-        params: Vec<FieldDeclaration>,
-        arity: usize,
-        return_kind: TypeDescriptor,
-    ) -> Self {
-        Self {
-            name,
-            params,
-            arity,
-            return_kind,
-        }
-    }
-}
-
-impl std::hash::Hash for FunctionPrototype {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SymbolTable {
-    names: HashMap<String, StaticValue>,
-    functions: HashMap<String, FunctionPrototype>,
-    native_functions: HashMap<String, FunctionPrototype>,
-}
-
-impl SymbolTable {
-    pub fn new() -> Self {
-        Self {
-            names: HashMap::new(),
-            functions: HashMap::new(),
-            native_functions: HashMap::new(),
-        }
-    }
-
-    fn define(&mut self, name: String, value: StaticValue) {
-        self.names.insert(name, value);
-    }
-
-    fn get(&self, name: &str) -> Option<&StaticValue> {
-        self.names.get(name)
-    }
-
-    fn get_function(&mut self, name: &str) -> Option<&mut FunctionPrototype> {
-        self.functions.get_mut(name)
-    }
-
-    fn define_function(&mut self, name: String, value: FunctionPrototype) {
-        self.functions.insert(name, value);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AnnotatedAST {
-    pub statements: Vec<AnnotatedStatement>,
-}
-
-impl AnnotatedAST {
-    pub fn new(statements: Vec<AnnotatedStatement>) -> Self {
-        Self { statements }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SemanticCode {
-    pub table: SymbolTable,
-    pub ast: AnnotatedAST,
-}
-
-#[derive(Debug, Clone)]
-pub enum AnnotatedExpression {
-    Literal(Token, TypeDescriptor),
-    Unary(Token, Box<AnnotatedExpression>, TypeDescriptor),
-    Group(Box<AnnotatedExpression>, TypeDescriptor),
-    Arithmetic(
-        Box<AnnotatedExpression>,
-        Token,
-        Box<AnnotatedExpression>,
-        TypeDescriptor,
-    ),
-    Logical(
-        Box<AnnotatedExpression>,
-        Token,
-        Box<AnnotatedExpression>,
-        TypeDescriptor,
-    ),
-    Assign(Token, Box<AnnotatedExpression>, TypeDescriptor),
-    Get(Box<AnnotatedExpression>, Token, TypeDescriptor),
-    Variable(Token, TypeDescriptor),
-    Call(
-        FunctionPrototype,
-        Token,
-        Vec<Box<AnnotatedExpression>>,
-        TypeDescriptor,
-    ),
-    CallNative(
-        FunctionPrototype,
-        Token,
-        Vec<Box<AnnotatedExpression>>,
-        TypeDescriptor,
-    ),
-    List(Vec<Box<AnnotatedExpression>>, TypeDescriptor),
-    TypeComposition(TypeDescriptor),
-    Attribute(Token, Vec<Box<AnnotatedExpression>>),
-    Void,
-    PostFix(Token, Box<AnnotatedExpression>),
-    Set(
-        Box<AnnotatedExpression>,
-        Token,
-        Box<AnnotatedExpression>,
-        TypeDescriptor,
-    ),
-    ListGet(Box<AnnotatedExpression>, Box<AnnotatedExpression>),
-}
-
-#[derive(Debug, Clone)]
-pub enum AnnotatedStatement {
-    If(
-        Token,
-        AnnotatedExpression,
-        Box<AnnotatedStatement>,
-        Option<Box<AnnotatedStatement>>,
-    ),
-    ForEach(Token, AnnotatedExpression, Box<AnnotatedStatement>),
-    Variable(Token, Option<AnnotatedExpression>),
-    Type(TypeDescriptor),
-    Function(FunctionPrototype, Box<AnnotatedStatement>),
-    Scope(Vec<Box<AnnotatedStatement>>),
-    Return(Option<AnnotatedExpression>),
-    Decorator(Token, Vec<AnnotatedExpression>),
-    Expression(AnnotatedExpression),
-    While(AnnotatedExpression, Box<AnnotatedStatement>),
-    Global,
-    EndCode,
-    NativeFunction(FunctionPrototype),
-}
-
-impl SemanticCode {
-    pub fn new(table: SymbolTable, ast: AnnotatedAST) -> Self {
-        SemanticCode { table, ast }
-    }
-
-    pub fn get_table(&self) -> &SymbolTable {
-        &self.table
-    }
 }
 
 impl SemanticAnalyzer {
@@ -507,7 +68,7 @@ impl SemanticAnalyzer {
     /// Returns the next available id for a new static type.
     /// # Returns
     /// A `u32` value with new given value.
-    fn get_static_id(&mut self) -> u32 {
+    pub fn get_static_id(&mut self) -> u32 {
         self.current_static_id += 1;
         self.current_static_id
     }
@@ -516,7 +77,7 @@ impl SemanticAnalyzer {
     /// by default in any compiled program, including `object`,
     /// `bool`, `number`, `float`, `int`, `iterator`, `str`,
     /// `tuple`, `list`.
-    fn initialize_predefined_types(&mut self) {
+    pub fn initialize_predefined_types(&mut self) {
         self.create_and_define_type("object", vec![]);
         self.create_and_define_type("bool", vec![]);
         self.create_and_define_type("number", vec![]);
@@ -561,7 +122,7 @@ impl SemanticAnalyzer {
     /// * `name` - A string slice containing the function name.
     /// * `params` - A `Vec` containing the description of function params names and kinds.
     /// * `kind` - The descriptor for function return kind.
-    fn create_and_define_function(
+    pub fn create_and_define_function(
         &mut self,
         name: &str,
         params: Vec<FieldDeclaration>,
@@ -581,7 +142,7 @@ impl SemanticAnalyzer {
     /// * `name` - A string slice with new field name.
     /// * `target_descriptor` - The descriptor of kind to be changed.
     /// * `field_descriptor` - The descriptor of new field.
-    fn add_field_to_defined_type(
+    pub fn add_field_to_defined_type(
         &mut self,
         name: &str,
         target_descriptor: &TypeDescriptor,
@@ -612,7 +173,7 @@ impl SemanticAnalyzer {
     /// * `name` - A string slice with name of kind to be defined.
     /// * `archetypes` - A `Vec` with names of archetypes to
     /// compound new kind mask.
-    fn create_and_define_type(&mut self, name: &str, archetypes: Vec<&str>) {
+    pub fn create_and_define_type(&mut self, name: &str, archetypes: Vec<&str>) {
         let mut type_decl = TypeDecl::new(name.to_string(), self.get_static_id());
 
         if "object".cmp(&type_decl.name) != Ordering::Equal {
@@ -648,7 +209,7 @@ impl SemanticAnalyzer {
     /// * `name` - A String containing the name of the symbol.
     /// * `value` - A fixed value with descriptor and `Value`
     /// for literals and instances.
-    fn define_symbol(&mut self, name: String, value: StaticValue) {
+    pub fn define_symbol(&mut self, name: String, value: StaticValue) {
         self.symbol_table.define(name, value);
     }
 
@@ -734,6 +295,7 @@ impl SemanticAnalyzer {
             Statement::If(keyword, condition, body, else_branch) => {
                 self.analyze_if_stmt(keyword, condition, &body, else_branch)
             }
+            Statement::BuiltinAttribute(name, kinds) => self.analyze_builtin_attribute(name, kinds),
             _ => gpp_error!("Statement {:?} not supported.", stmt),
         }
     }
@@ -2929,16 +2491,62 @@ impl SemanticAnalyzer {
         token: Token,
         expressions: Vec<Rc<Expression>>,
     ) -> AnnotatedExpression {
-        let attrib = self.default_attributes.get_attribute(token.lexeme);
+        let attrib = &self.symbol_table.get_attribute(token.lexeme.clone());
 
-        for (index, arg) in attrib.args.clone().iter().enumerate() {
-            let kind = self.resolve_expr_type(&expressions[index]);
+        match attrib {
+            Some(att) => {
+                if att.args.len() != expressions.len() {
+                    gpp_error!(
+                        "Expect {} args, but got {}.",
+                        att.args.len(),
+                        expressions.len()
+                    );
+                }
 
-            if kind.name != *arg {
-                gpp_error!("Incorrect arg kind.");
+                let mut index = 0usize;
+
+                for kind in &att.args.clone() {
+                    let expr = expressions[index].clone();
+                    index += 1;
+                    let expr_kind = self.resolve_expr_type(&expr);
+
+                    if kind.id != expr_kind.id {
+                        gpp_error!(
+                            "Expect '{}' value, but got '{}'.",
+                            kind.name,
+                            expr_kind.name
+                        );
+                    }
+                }
+            }
+            None => {
+                gpp_error!("Attribute '{}' not found.", token.lexeme);
             }
         }
 
         AnnotatedExpression::Void
+    }
+
+    fn analyze_builtin_attribute(
+        &mut self,
+        name: &Token,
+        kinds: &Vec<Token>,
+    ) -> AnnotatedStatement {
+        let att_name = name.lexeme.clone();
+        let mut att_kinds: Vec<TypeDescriptor> = Vec::new();
+
+        for kind in kinds {
+            if !self.check_type_exists(&kind.lexeme) {
+                gpp_error!("Type '{}' not found.", kind.lexeme);
+            }
+
+            let att_kind = self.get_static_kind(&kind.lexeme);
+            att_kinds.push(att_kind);
+        }
+
+        self.symbol_table
+            .define_attribute(att_name, att_kinds.clone());
+
+        AnnotatedStatement::BuiltinAttribute(name.clone(), att_kinds)
     }
 }

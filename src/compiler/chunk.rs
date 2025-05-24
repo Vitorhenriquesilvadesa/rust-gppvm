@@ -1,5 +1,3 @@
-use super::semantics::Value;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompileTimeValue {
     Int(i32),
@@ -43,7 +41,11 @@ pub struct CompileTimeChunk {
 
 impl CompileTimeChunk {
     pub fn empty() -> Self {
-        Self { code: Vec::new(), lines: Vec::new(), constants: Vec::new() }
+        Self {
+            code: Vec::new(),
+            lines: Vec::new(),
+            constants: Vec::new(),
+        }
     }
 
     pub fn write(&mut self, instruction: u8) {

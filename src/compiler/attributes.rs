@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::gpp_error;
 
-use super::semantics::TypeDescriptor;
+use crate::compiler::semantic_types::TypeDescriptor;
 
 #[derive(Clone)]
 pub struct Attribute {

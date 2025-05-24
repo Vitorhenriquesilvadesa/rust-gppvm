@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{ ast::FieldDeclaration, expressions::Expression, lexer::Token };
+use super::{ast::FieldDeclaration, expressions::Expression, lexer::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -17,6 +17,7 @@ pub enum Statement {
 
     // region:  --- Declarations
     Decorator(Token, Vec<Expression>),
+    BuiltinAttribute(Token, Vec<Token>),
     Type(Token, Vec<Token>, Vec<FieldDeclaration>),
     Function(Token, Vec<FieldDeclaration>, Rc<Statement>, Expression),
     Global,

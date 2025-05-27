@@ -40,6 +40,7 @@ impl NativeFunctionInfo {
 pub struct Bytecode {
     functions: HashMap<u32, VirtualFunction>,
     pub native_functions: HashMap<String, NativeFunctionInfo>,
+    pub v_tables: HashMap<u32, Vec<VirtualFunction>>,
     pub main: Option<VirtualFunction>,
 }
 
@@ -47,11 +48,13 @@ impl Bytecode {
     pub fn new(
         functions: HashMap<u32, VirtualFunction>,
         native_functions: HashMap<String, NativeFunctionInfo>,
+        v_tables: HashMap<u32, Vec<VirtualFunction>>,
         main: Option<VirtualFunction>,
     ) -> Self {
         Self {
             functions,
             native_functions,
+            v_tables,
             main,
         }
     }
@@ -69,6 +72,7 @@ impl BytecodeGenerator {
     pub fn generate(&self, ir: &IntermediateCode) -> Bytecode {
         let mut functions: HashMap<u32, VirtualFunction> = HashMap::new();
         let mut main: Option<VirtualFunction> = None;
+        let mut v_tables: HashMap<u32, Vec<VirtualFunction>> = HashMap::new();
 
         for function in &ir.functions {
             let mut code = function.1.chunk.code.clone();
@@ -108,6 +112,46 @@ impl BytecodeGenerator {
             }
         }
 
-        Bytecode::new(functions, ir.native_functions.clone(), main)
+        for (desc, v_table) in &ir.methods {
+            for method in v_table {
+                let mut code = method.chunk.code.clone();
+                let mut constants = Vec::new();
+
+                for constant in &method.chunk.constants {
+                    let c: Value;
+
+                    match constant {
+                        super::chunk::CompileTimeValue::Int(v) => {
+                            c = Value::Int(v.clone());
+                        }
+                        super::chunk::CompileTimeValue::Float(v) => {
+                            c = Value::Float(v.clone());
+                        }
+                        super::chunk::CompileTimeValue::String(v) => {
+                            c = Value::String(Rc::new(v.clone()));
+                        }
+                        super::chunk::CompileTimeValue::Boolean(v) => {
+                            c = Value::Bool(v.clone());
+                        }
+                        super::chunk::CompileTimeValue::Object(v) => {
+                            gpp_error!("Cannot create complex object constants.");
+                        }
+                    }
+
+                    constants.push(c);
+                }
+
+                let chunk = Chunk::new(code, constants);
+                let virtual_function = VirtualFunction::new(method.id, Rc::new(chunk));
+
+                if v_tables.contains_key(&desc.id) {
+                    v_tables.get_mut(&desc.id).unwrap().push(virtual_function);
+                } else {
+                    v_tables.insert(desc.id, vec![virtual_function]);
+                }
+            }
+        }
+
+        Bytecode::new(functions, ir.native_functions.clone(), v_tables, main)
     }
 }

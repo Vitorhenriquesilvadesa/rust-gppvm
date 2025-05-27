@@ -457,6 +457,15 @@ impl VirtualMachine {
         self.attach_fn(index, arity);
     }
 
+    #[inline]
+    pub fn handle_invoke_virtual(&mut self) {
+        let v_table_index = self.read_u32();
+        let function_index = self.read_u32();
+        let arity = self.read_byte();
+
+        self.attach_method(v_table_index, function_index, arity);
+    }
+
     #[inline(always)]
     pub fn handle_invoke_native(&mut self) {
         let index = self.read_u32();
@@ -650,6 +659,7 @@ impl VirtualMachine {
                 Instruction::Array => self.handle_array(),
                 Instruction::ListGet => self.handle_list_get(),
                 Instruction::Not => self.handle_not(),
+                Instruction::InvokeVirtual => self.handle_invoke_virtual(),
                 Instruction::Halt => {
                     break;
                 }
@@ -718,6 +728,33 @@ impl VirtualMachine {
     fn attach_fn(&mut self, function_id: u32, arity: u8) {
         let code = self.bytecode.clone();
         let chunk = code.unwrap().get_function(function_id);
+        let frame = Frame::new(chunk);
+
+        self.frame_stack
+            .last()
+            .unwrap()
+            .borrow_mut()
+            .set_ip(self.ip);
+        self.frame_stack
+            .last()
+            .unwrap()
+            .borrow_mut()
+            .set_sp(self.sp - (arity as usize));
+        self.frame_stack.push(RefCell::new(frame));
+        self.frame_stack
+            .last()
+            .unwrap()
+            .borrow_mut()
+            .set_fp(self.sp - (arity as usize));
+        self.ip = 0;
+        self.fp = self.sp - (arity as usize);
+    }
+
+    fn attach_method(&mut self, v_table_id: u32, method_id: u32, arity: u8) {
+        let code = self.bytecode.clone();
+        let chunk = code.unwrap().v_tables[&v_table_id][method_id as usize]
+            .chunk
+            .clone();
         let frame = Frame::new(chunk);
 
         self.frame_stack

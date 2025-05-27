@@ -10,8 +10,8 @@ use super::{
     instructions::Instruction,
     lexer::{KeywordKind, Literal, OperatorKind, Token, TokenKind},
     semantic_types::{
-        AnnotatedAST, AnnotatedExpression, AnnotatedStatement, FunctionPrototype, SemanticCode,
-        SymbolTable, TypeDescriptor,
+        AnnotatedAST, AnnotatedExpression, AnnotatedStatement, FunctionPrototype, MethodDescriptor,
+        SemanticCode, SymbolTable, TypeDescriptor,
     },
 };
 
@@ -62,6 +62,7 @@ pub struct IRGenerator {
     pub functions: HashMap<String, IRFunction>,
     pub native_functions: HashMap<String, NativeFunctionInfo>,
     pub kinds: HashMap<String, IRType>,
+    pub methods: HashMap<TypeDescriptor, Vec<IRFunction>>,
     current_chunk: CompileTimeChunk,
     local_values: CompileTimeStack,
     current_depth: u32,
@@ -75,6 +76,7 @@ impl IRGenerator {
             reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
             functions: HashMap::new(),
             kinds: HashMap::new(),
+            methods: HashMap::new(),
             top_level_graph: CodeGraph::new(HashMap::new()),
             current_chunk: CompileTimeChunk::empty(),
             current_depth: 0,
@@ -101,6 +103,7 @@ impl IRGenerator {
         IntermediateCode::new(
             self.functions.clone(),
             self.native_functions.clone(),
+            self.methods.clone(),
             self.kinds.clone(),
             self.top_level_graph.clone(),
         )
@@ -146,6 +149,9 @@ impl IRGenerator {
             AnnotatedStatement::BuiltinAttribute(name, kinds) => {
                 println!("Attribute: {}", name.lexeme);
                 vec![]
+            }
+            AnnotatedStatement::InternalDefinition(target, definition, body) => {
+                self.generate_internal_definition_ir(target, definition, body)
             }
         }
     }
@@ -285,6 +291,10 @@ impl IRGenerator {
 
             AnnotatedExpression::Call(proto, callee, args, kind) => {
                 self.generate_call_expr_ir(proto, callee, args, kind)
+            }
+
+            AnnotatedExpression::CallMethod(object, method, args) => {
+                self.generate_method_call_ir(object, method, args)
             }
 
             AnnotatedExpression::CallNative(proto, callee, args, kind) => {
@@ -832,6 +842,111 @@ impl IRGenerator {
 
         id
     }
+
+    fn generate_internal_definition_ir(
+        &mut self,
+        target: &TypeDescriptor,
+        definition: &FunctionPrototype,
+        body: &AnnotatedStatement,
+    ) -> Vec<u8> {
+        self.current_chunk = CompileTimeChunk::empty();
+        let mut code = Vec::new();
+
+        self.begin_scope();
+
+        for (i, param) in definition.params.iter().enumerate() {
+            self.declare_local(param.name.lexeme.clone(), true);
+        }
+
+        if let AnnotatedStatement::Scope(stmts) = body {
+            for stmt in stmts {
+                let stmt_code = self.generate_ir_for(stmt);
+
+                for byte in stmt_code {
+                    self.emit_byte(&mut code, byte);
+                }
+            }
+        }
+
+        self.end_scope(&mut code);
+
+        self.emit_instruction(&mut code, Instruction::Void);
+        self.emit_instruction(&mut code, Instruction::Ret);
+
+        self.current_chunk.code = code.clone();
+
+        let id = match self.methods.contains_key(&target) {
+            true => self.methods[&target].len() as u32,
+            false => 0,
+        };
+
+        let ir_function = IRFunction::new(
+            id,
+            definition.name.clone(),
+            self.current_chunk.clone(),
+            definition.arity as u8,
+        );
+
+        if self.methods.contains_key(&target) {
+            self.methods.get_mut(&target).unwrap().push(ir_function);
+        } else {
+            self.methods.insert(target.clone(), vec![ir_function]);
+        }
+
+        code
+    }
+
+    fn generate_method_call_ir(
+        &mut self,
+        object: &AnnotatedExpression,
+        method: &MethodDescriptor,
+        args: &Vec<Box<AnnotatedExpression>>,
+    ) -> Vec<u8> {
+        let mut code = Vec::new();
+
+        let owner_type = &self
+            .semantic_code
+            .table
+            .get_type_by_id(method.owner_type_id)
+            .unwrap();
+
+        let method_table = self.methods.get(&owner_type).unwrap();
+        let ir_method = method_table
+            .iter()
+            .find(|m| m.name == method.name)
+            .unwrap()
+            .clone();
+
+        let mut self_code = self.generate_expr_ir(object);
+        code.append(&mut self_code);
+
+        for arg in args {
+            let mut arg_code = self.generate_expr_ir(arg);
+            code.append(&mut arg_code);
+        }
+
+        code.push(Instruction::InvokeVirtual as u8);
+
+        let method_index = ir_method.id;
+        let method_index_bytes = self.split_u32(method_index);
+
+        let v_table_index = owner_type.id;
+        let v_table_index_bytes = self.split_u32(v_table_index);
+
+        code.push(v_table_index_bytes.0);
+        code.push(v_table_index_bytes.1);
+        code.push(v_table_index_bytes.2);
+        code.push(v_table_index_bytes.3);
+
+        code.push(method_index_bytes.0);
+        code.push(method_index_bytes.1);
+        code.push(method_index_bytes.2);
+        code.push(method_index_bytes.3);
+
+        code.push(ir_method.arity as u8);
+
+        code
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -895,6 +1010,7 @@ impl CodeGraph {
 pub struct IntermediateCode {
     pub functions: HashMap<String, IRFunction>,
     pub native_functions: HashMap<String, NativeFunctionInfo>,
+    pub methods: HashMap<TypeDescriptor, Vec<IRFunction>>,
     pub kinds: HashMap<String, IRType>,
     pub graph: CodeGraph,
 }
@@ -903,12 +1019,14 @@ impl IntermediateCode {
     pub fn new(
         functions: HashMap<String, IRFunction>,
         native_functions: HashMap<String, NativeFunctionInfo>,
+        methods: HashMap<TypeDescriptor, Vec<IRFunction>>,
         kinds: HashMap<String, IRType>,
         graph: CodeGraph,
     ) -> Self {
         Self {
             functions,
             native_functions,
+            methods,
             kinds,
             graph,
         }

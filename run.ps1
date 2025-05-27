@@ -1,0 +1,1 @@
+cargo run -- -c res/test.gpp

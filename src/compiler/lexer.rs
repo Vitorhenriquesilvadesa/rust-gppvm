@@ -73,6 +73,7 @@ pub enum KeywordKind {
     Native,
     Builtin,
     Attribute,
+    Internal,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -180,6 +181,10 @@ pub fn create_keywords() -> HashMap<String, TokenKind> {
     keywords.insert(
         "attribute".to_string(),
         TokenKind::Keyword(KeywordKind::Attribute),
+    );
+    keywords.insert(
+        "internal".to_string(),
+        TokenKind::Keyword(KeywordKind::Internal),
     );
 
     keywords

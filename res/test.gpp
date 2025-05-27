@@ -1,4 +1,3 @@
-// Compiler built-in functions will be moved to prelude std files in the future.
 native def input() -> str;
 native def print(x: object) -> void;
 native def float(x: str) -> float;
@@ -9,27 +8,15 @@ native def append(x: list, value: object) -> void;
 native def args() -> list;
 native def exit(code: int) -> void;
 
-// Grid structure of GPU
-builtin attribute num_threads(int, int, int);
+internal def negate(self: bool) -> bool {
+    return not self;
+}
 
-// Intensity of parallelization
-builtin attribute parallel(str);
-
-// Backend to be used like CUDA, OpenCL, Vulkan
-builtin attribute backend(str);
-
-// Operating system to be used like win32, linux, darwin
-builtin attribute target(str);
-
-#[num_threads(8, 8, 8), parallel("agressive"), target("darwin")]
-def test_fn() -> void {
-
+internal def sum(self: int, other: int) -> int {
+    return self + other;
 }
 
 def main() -> void {
-    let i = 0;
-
-    while i < 100000000 {
-        i++;
-    }
+    print(false.negate());
+    print(10.sum(10));
 }

@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    hash::Hash,
 };
 
 use super::{ast::FieldDeclaration, lexer::Token};
@@ -108,12 +109,98 @@ impl FieldDescriptor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeDescriptor {
     pub name: String,
     pub id: u32,
     pub archetypes: HashSet<Archetype>,
     pub fields: HashMap<String, FieldDescriptor>,
+    pub methods: HashMap<String, MethodDescriptor>,
+}
+
+impl PartialEq for TypeDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for TypeDescriptor {}
+
+impl Hash for TypeDescriptor {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.id.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodParameter {
+    pub name: String,
+    pub kind: TypeDescriptor,
+}
+
+impl MethodParameter {
+    pub fn new(name: String, kind: TypeDescriptor) -> Self {
+        Self { name, kind }
+    }
+}
+
+impl Hash for MethodParameter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.kind.hash(state);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodDescriptor {
+    pub name: String,
+    pub params: Vec<MethodParameter>,
+    pub arity: usize,
+    pub owner_type_id: u32,
+    pub return_kind: TypeDescriptor,
+    pub is_native: bool,
+}
+
+impl MethodDescriptor {
+    pub fn new(
+        name: String,
+        params: Vec<MethodParameter>,
+        arity: usize,
+        owner_type_id: u32,
+        return_kind: TypeDescriptor,
+        is_native: bool,
+    ) -> Self {
+        Self {
+            name,
+            params,
+            arity,
+            owner_type_id,
+            return_kind,
+            is_native,
+        }
+    }
+}
+
+impl Hash for MethodDescriptor {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.params.hash(state);
+        self.arity.hash(state);
+        self.owner_type_id.hash(state);
+        self.return_kind.hash(state);
+        self.is_native.hash(state);
+    }
+}
+
+impl PartialEq for MethodDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.params == other.params
+            && self.owner_type_id == other.owner_type_id
+            && self.return_kind == other.return_kind
+            && self.is_native == other.is_native
+    }
 }
 
 impl TypeDescriptor {
@@ -128,6 +215,7 @@ impl TypeDescriptor {
             archetypes,
             fields,
             id,
+            methods: HashMap::new(),
         }
     }
 
@@ -137,6 +225,7 @@ impl TypeDescriptor {
             fields: HashMap::new(),
             name: decl.name,
             id: decl.kind_id,
+            methods: HashMap::new(),
         }
     }
 
@@ -149,6 +238,7 @@ impl TypeDescriptor {
             fields,
             name: decl.name,
             id: decl.kind_id,
+            methods: HashMap::new(),
         }
     }
 
@@ -162,6 +252,7 @@ impl TypeDescriptor {
             id: 0,
             archetypes: HashSet::new(),
             fields: HashMap::new(),
+            methods: HashMap::new(),
         }
     }
 }
@@ -285,6 +376,7 @@ pub enum SymbolKind {
     Function,
     Kind,
     None,
+    InternalDefinition,
 }
 
 #[derive(Debug, Clone)]
@@ -348,6 +440,17 @@ pub enum AnnotatedExpression {
         TypeDescriptor,
     ),
     ListGet(Box<AnnotatedExpression>, Box<AnnotatedExpression>),
+    CallMethod(
+        Box<AnnotatedExpression>,
+        MethodDescriptor,
+        Vec<Box<AnnotatedExpression>>,
+    ),
+    CallNativeMethod(
+        Box<AnnotatedExpression>,
+        Token,
+        Vec<Box<AnnotatedExpression>>,
+        TypeDescriptor,
+    ),
 }
 
 #[derive(Debug, Clone)]
@@ -363,6 +466,7 @@ pub enum AnnotatedStatement {
     Variable(Token, Option<AnnotatedExpression>),
     Type(TypeDescriptor),
     Function(FunctionPrototype, Box<AnnotatedStatement>),
+    InternalDefinition(TypeDescriptor, FunctionPrototype, Box<AnnotatedStatement>),
     Scope(Vec<Box<AnnotatedStatement>>),
     Return(Option<AnnotatedExpression>),
     Decorator(Token, Vec<AnnotatedExpression>),
@@ -472,5 +576,13 @@ impl SymbolTable {
 
     pub fn define_function(&mut self, name: String, value: FunctionPrototype) {
         self.functions.insert(name, value);
+    }
+
+    pub(crate) fn get_type_by_id(&self, id: u32) -> Option<TypeDescriptor> {
+        let types = self.names.iter().find(|(_, v)| v.kind.id == id);
+        match types {
+            None => None,
+            Some((_, s)) => Some(s.kind.clone()),
+        }
     }
 }

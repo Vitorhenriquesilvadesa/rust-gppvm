@@ -65,7 +65,10 @@ impl Parser {
             let stmt = self.declaration();
             match stmt {
                 Ok(s) => self.statements.push(s),
-                Err(e) => self.synchronize(),
+                Err(e) => {
+                    println!("{}", e.message);
+                    self.synchronize();
+                }
             }
         }
 
@@ -82,6 +85,7 @@ impl Parser {
                 KeywordKind::Def => self.function_declaration(),
                 KeywordKind::Native => self.parse_native_decl(),
                 KeywordKind::Builtin => self.parse_builtin_decl(),
+                KeywordKind::Internal => self.parse_internal_function(),
                 _ => {
                     self.backtrack();
                     self.statement()
@@ -99,6 +103,96 @@ impl Parser {
                 self.statement()
             }
         }
+    }
+
+    fn parse_internal_function(&mut self) -> Result<Statement, ParseError> {
+        self.eat(
+            TokenKind::Keyword(KeywordKind::Def),
+            format!(
+                "Expect 'def' after 'internal' keyword. At line {}",
+                self.peek().line
+            ),
+        )?;
+
+        let function_name = self.eat(
+            TokenKind::Identifier,
+            format!(
+                "Expect internal definition name after 'def' keyword. At line {}.",
+                self.peek().line
+            ),
+        )?;
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftParen),
+            format!(
+                "Expect '(' after definition name, but got {}. At line {}",
+                self.peek().lexeme,
+                self.peek().line
+            ),
+        )?;
+
+        let mut params: Vec<FieldDeclaration> = Vec::new();
+
+        if !self.check(&[TokenKind::Punctuation(PunctuationKind::RightParen)]) {
+            let param_name = self.eat(TokenKind::Identifier, String::from("Expect param name."))?;
+
+            self.eat(
+                TokenKind::Punctuation(PunctuationKind::Colon),
+                String::from("Expect ':' after param name."),
+            )?;
+
+            let param_type = self.type_composition()?;
+
+            params.push(FieldDeclaration::new(param_name, param_type));
+
+            while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
+                let param_name =
+                    self.eat(TokenKind::Identifier, String::from("Expect param name."))?;
+
+                self.eat(
+                    TokenKind::Punctuation(PunctuationKind::Colon),
+                    String::from("Expect ':' after param name."),
+                )?;
+
+                let param_type = self.type_composition()?;
+
+                params.push(FieldDeclaration::new(param_name, param_type));
+            }
+        }
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::RightParen),
+            String::from("Expect ')' after function params."),
+        )?;
+
+        let mut return_kind: Expression;
+
+        self.eat(
+            TokenKind::Operator(OperatorKind::Arrow),
+            format!(
+                "Expect function return kind. At line {}",
+                self.previous().line
+            ),
+        )?;
+
+        return_kind = self.type_composition()?;
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::LeftBrace),
+            String::from(format!(
+                "Expect '{{' before function body, but got {}.",
+                self.peek().lexeme
+            )),
+        )?;
+
+        let body = self.parse_scope()?;
+
+        Ok(Statement::InternalDefinition(
+            function_name,
+            params,
+            Rc::new(body),
+            return_kind,
+        ))
     }
 
     fn parse_native_decl(&mut self) -> Result<Statement, ParseError> {

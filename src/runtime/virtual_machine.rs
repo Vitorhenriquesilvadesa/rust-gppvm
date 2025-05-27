@@ -594,7 +594,7 @@ impl VirtualMachine {
         self.push(Value::Object(Rc::new(RefCell::new(List::new(elements)))));
     }
 
-    fn invalidate_native_call(args: Vec<Value>) -> Value {
+    fn invalidate_native_call(_: Vec<Value>) -> Value {
         println!("Invalid native call index!");
         std::process::exit(0);
     }

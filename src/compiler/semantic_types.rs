@@ -1,7 +1,9 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
+    rc::Rc,
 };
 
 use super::{ast::FieldDeclaration, lexer::Token};
@@ -99,15 +101,32 @@ impl Archetype {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDescriptor {
     pub name: String,
-    pub kind: TypeDescriptor,
+    pub kind: Rc<RefCell<TypeDescriptor>>,
     pub id: u8,
 }
 
 impl FieldDescriptor {
-    pub fn new(name: String, kind: TypeDescriptor, id: u8) -> Self {
+    pub fn new(name: String, kind: Rc<RefCell<TypeDescriptor>>, id: u8) -> Self {
         Self { name, kind, id }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct TypeKey(Rc<RefCell<TypeDescriptor>>);
+
+impl Hash for TypeKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.borrow().hash(state);
+    }
+}
+
+impl PartialEq for TypeKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.borrow().id == other.0.borrow().id
+    }
+}
+
+impl Eq for TypeKey {}
 
 #[derive(Debug, Clone)]
 pub struct TypeDescriptor {
@@ -136,11 +155,11 @@ impl Hash for TypeDescriptor {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethodParameter {
     pub name: String,
-    pub kind: TypeDescriptor,
+    pub kind: Rc<RefCell<TypeDescriptor>>,
 }
 
 impl MethodParameter {
-    pub fn new(name: String, kind: TypeDescriptor) -> Self {
+    pub fn new(name: String, kind: Rc<RefCell<TypeDescriptor>>) -> Self {
         Self { name, kind }
     }
 }
@@ -148,7 +167,7 @@ impl MethodParameter {
 impl Hash for MethodParameter {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
-        self.kind.hash(state);
+        self.kind.borrow().hash(state);
     }
 }
 
@@ -158,7 +177,7 @@ pub struct MethodDescriptor {
     pub params: Vec<MethodParameter>,
     pub arity: usize,
     pub owner_type_id: u32,
-    pub return_kind: TypeDescriptor,
+    pub return_kind_id: u32,
     pub is_native: bool,
 }
 
@@ -168,7 +187,7 @@ impl MethodDescriptor {
         params: Vec<MethodParameter>,
         arity: usize,
         owner_type_id: u32,
-        return_kind: TypeDescriptor,
+        return_kind_id: u32,
         is_native: bool,
     ) -> Self {
         Self {
@@ -176,7 +195,7 @@ impl MethodDescriptor {
             params,
             arity,
             owner_type_id,
-            return_kind,
+            return_kind_id,
             is_native,
         }
     }
@@ -188,7 +207,7 @@ impl Hash for MethodDescriptor {
         self.params.hash(state);
         self.arity.hash(state);
         self.owner_type_id.hash(state);
-        self.return_kind.hash(state);
+        self.return_kind_id.hash(state);
         self.is_native.hash(state);
     }
 }
@@ -198,7 +217,7 @@ impl PartialEq for MethodDescriptor {
         self.name == other.name
             && self.params == other.params
             && self.owner_type_id == other.owner_type_id
-            && self.return_kind == other.return_kind
+            && self.return_kind_id == other.return_kind_id
             && self.is_native == other.is_native
     }
 }
@@ -284,25 +303,25 @@ impl TypeDecl {
 
 #[derive(Clone, Debug)]
 pub struct SemanticValue {
-    pub kind: Option<TypeDescriptor>,
+    pub kind: Option<Rc<RefCell<TypeDescriptor>>>,
     pub value: Value,
     pub line: usize,
 }
 
 impl SemanticValue {
-    pub fn new(kind: Option<TypeDescriptor>, value: Value, line: usize) -> Self {
+    pub fn new(kind: Option<Rc<RefCell<TypeDescriptor>>>, value: Value, line: usize) -> Self {
         Self { kind, value, line }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct StaticValue {
-    pub kind: TypeDescriptor,
+    pub kind: Rc<RefCell<TypeDescriptor>>,
     pub value: Value,
 }
 
 impl StaticValue {
-    pub fn new(kind: TypeDescriptor, value: Value) -> Self {
+    pub fn new(kind: Rc<RefCell<TypeDescriptor>>, value: Value) -> Self {
         Self { kind, value }
     }
 }
@@ -331,7 +350,7 @@ impl ContextScope {
         }
     }
 
-    pub fn set_infered_kind(&mut self, name: &String, kind: TypeDescriptor) {
+    pub fn set_infered_kind(&mut self, name: &String, kind: Rc<RefCell<TypeDescriptor>>) {
         self.names.get_mut(name).unwrap().kind = Some(kind);
     }
 
@@ -398,38 +417,38 @@ pub struct SemanticCode {
 
 #[derive(Debug, Clone)]
 pub enum AnnotatedExpression {
-    Literal(Token, TypeDescriptor),
-    Unary(Token, Box<AnnotatedExpression>, TypeDescriptor),
-    Group(Box<AnnotatedExpression>, TypeDescriptor),
+    Literal(Token, Rc<RefCell<TypeDescriptor>>),
+    Unary(Token, Box<AnnotatedExpression>, Rc<RefCell<TypeDescriptor>>),
+    Group(Box<AnnotatedExpression>, Rc<RefCell<TypeDescriptor>>),
     Arithmetic(
         Box<AnnotatedExpression>,
         Token,
         Box<AnnotatedExpression>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
     Logical(
         Box<AnnotatedExpression>,
         Token,
         Box<AnnotatedExpression>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
-    Assign(Token, Box<AnnotatedExpression>, TypeDescriptor),
-    Get(Box<AnnotatedExpression>, Token, TypeDescriptor),
-    Variable(Token, TypeDescriptor),
+    Assign(Token, Box<AnnotatedExpression>, Rc<RefCell<TypeDescriptor>>),
+    Get(Box<AnnotatedExpression>, Token, Rc<RefCell<TypeDescriptor>>),
+    Variable(Token, Rc<RefCell<TypeDescriptor>>),
     Call(
         FunctionPrototype,
         Token,
         Vec<Box<AnnotatedExpression>>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
     CallNative(
         FunctionPrototype,
         Token,
         Vec<Box<AnnotatedExpression>>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
-    List(Vec<Box<AnnotatedExpression>>, TypeDescriptor),
-    TypeComposition(TypeDescriptor),
+    List(Vec<Box<AnnotatedExpression>>, Rc<RefCell<TypeDescriptor>>),
+    TypeComposition(Rc<RefCell<TypeDescriptor>>),
     Attribute(Token, Vec<Box<AnnotatedExpression>>),
     Void,
     PostFix(Token, Box<AnnotatedExpression>),
@@ -437,7 +456,7 @@ pub enum AnnotatedExpression {
         Box<AnnotatedExpression>,
         Token,
         Box<AnnotatedExpression>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
     ListGet(Box<AnnotatedExpression>, Box<AnnotatedExpression>),
     CallMethod(
@@ -449,7 +468,7 @@ pub enum AnnotatedExpression {
         Box<AnnotatedExpression>,
         Token,
         Vec<Box<AnnotatedExpression>>,
-        TypeDescriptor,
+        Rc<RefCell<TypeDescriptor>>,
     ),
 }
 
@@ -461,12 +480,16 @@ pub enum AnnotatedStatement {
         Box<AnnotatedStatement>,
         Option<Box<AnnotatedStatement>>,
     ),
-    BuiltinAttribute(Token, Vec<TypeDescriptor>),
+    BuiltinAttribute(Token, Vec<Rc<RefCell<TypeDescriptor>>>),
     ForEach(Token, AnnotatedExpression, Box<AnnotatedStatement>),
     Variable(Token, Option<AnnotatedExpression>),
-    Type(TypeDescriptor),
+    Type(Rc<RefCell<TypeDescriptor>>),
     Function(FunctionPrototype, Box<AnnotatedStatement>),
-    InternalDefinition(TypeDescriptor, FunctionPrototype, Box<AnnotatedStatement>),
+    InternalDefinition(
+        Rc<RefCell<TypeDescriptor>>,
+        FunctionPrototype,
+        Box<AnnotatedStatement>,
+    ),
     Scope(Vec<Box<AnnotatedStatement>>),
     Return(Option<AnnotatedExpression>),
     Decorator(Token, Vec<AnnotatedExpression>),
@@ -492,7 +515,7 @@ pub struct FunctionPrototype {
     pub name: String,
     pub params: Vec<FieldDeclaration>,
     pub arity: usize,
-    pub return_kind: TypeDescriptor,
+    pub return_kind: Rc<RefCell<TypeDescriptor>>,
 }
 
 impl FunctionPrototype {
@@ -500,7 +523,7 @@ impl FunctionPrototype {
         name: String,
         params: Vec<FieldDeclaration>,
         arity: usize,
-        return_kind: TypeDescriptor,
+        return_kind: Rc<RefCell<TypeDescriptor>>,
     ) -> Self {
         Self {
             name,
@@ -526,11 +549,11 @@ impl std::hash::Hash for BuiltinAttribute {
 #[derive(Clone, Debug)]
 pub struct BuiltinAttribute {
     pub name: String,
-    pub args: Vec<TypeDescriptor>,
+    pub args: Vec<Rc<RefCell<TypeDescriptor>>>,
 }
 
 impl BuiltinAttribute {
-    pub fn new(name: String, args: Vec<TypeDescriptor>) -> Self {
+    pub fn new(name: String, args: Vec<Rc<RefCell<TypeDescriptor>>>) -> Self {
         Self { name, args }
     }
 }
@@ -557,7 +580,7 @@ impl SymbolTable {
         return self.attributes.get(&name);
     }
 
-    pub fn define_attribute(&mut self, name: String, args: Vec<TypeDescriptor>) {
+    pub fn define_attribute(&mut self, name: String, args: Vec<Rc<RefCell<TypeDescriptor>>>) {
         self.attributes
             .insert(name.clone(), BuiltinAttribute::new(name, args));
     }
@@ -578,8 +601,8 @@ impl SymbolTable {
         self.functions.insert(name, value);
     }
 
-    pub(crate) fn get_type_by_id(&self, id: u32) -> Option<TypeDescriptor> {
-        let types = self.names.iter().find(|(_, v)| v.kind.id == id);
+    pub(crate) fn get_type_by_id(&self, id: u32) -> Option<Rc<RefCell<TypeDescriptor>>> {
+        let types = self.names.iter().find(|(_, v)| v.kind.borrow().id == id);
         match types {
             None => None,
             Some((_, s)) => Some(s.kind.clone()),

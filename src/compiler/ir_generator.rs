@@ -139,7 +139,7 @@ impl IRGenerator {
             }
             AnnotatedStatement::Return(value) => self.generate_return_ir(value),
             AnnotatedStatement::Scope(statements) => self.generate_scope_ir(statements),
-            AnnotatedStatement::Type(descriptor) => self.generate_type_ir(descriptor),
+            AnnotatedStatement::Type(descriptor) => self.generate_type_ir(&descriptor.borrow()),
             AnnotatedStatement::Variable(name, value) => {
                 self.generate_variable_decl_ir(name, value)
             }
@@ -151,7 +151,7 @@ impl IRGenerator {
                 vec![]
             }
             AnnotatedStatement::InternalDefinition(target, definition, body) => {
-                self.generate_internal_definition_ir(target, definition, body)
+                self.generate_internal_definition_ir(&target.borrow(), definition, body)
             }
         }
     }
@@ -282,7 +282,7 @@ impl IRGenerator {
     fn generate_expr_ir(&mut self, expr: &AnnotatedExpression) -> Vec<u8> {
         match expr {
             AnnotatedExpression::Arithmetic(left, op, right, kind) => {
-                self.generate_arithmetic_expr_ir(left, op, right, kind)
+                self.generate_arithmetic_expr_ir(left, op, right, &kind.borrow())
             }
 
             AnnotatedExpression::PostFix(operator, variable) => {
@@ -290,7 +290,7 @@ impl IRGenerator {
             }
 
             AnnotatedExpression::Call(proto, callee, args, kind) => {
-                self.generate_call_expr_ir(proto, callee, args, kind)
+                self.generate_call_expr_ir(proto, callee, args, &kind.borrow())
             }
 
             AnnotatedExpression::CallMethod(object, method, args) => {
@@ -298,30 +298,36 @@ impl IRGenerator {
             }
 
             AnnotatedExpression::CallNative(proto, callee, args, kind) => {
-                self.generate_call_native_expr_ir(proto, callee, args, kind)
+                self.generate_call_native_expr_ir(proto, callee, args, &kind.borrow())
             }
 
             AnnotatedExpression::Assign(name, value, kind) => {
-                self.generate_assign_expr_ir(name, value, kind)
+                self.generate_assign_expr_ir(name, value, &kind.borrow())
             }
 
             AnnotatedExpression::Unary(operator, expression, kind) => {
-                self.generate_unary_expr_ir(operator, expression, kind)
+                self.generate_unary_expr_ir(operator, expression, &kind.borrow())
             }
 
-            AnnotatedExpression::Variable(name, kind) => self.generate_variable_expr_ir(name, kind),
+            AnnotatedExpression::Variable(name, kind) => {
+                self.generate_variable_expr_ir(name, &kind.borrow())
+            }
 
-            AnnotatedExpression::Literal(token, kind) => self.generate_literal_ir(token, kind),
+            AnnotatedExpression::Literal(token, kind) => {
+                self.generate_literal_ir(token, &kind.borrow())
+            }
 
             AnnotatedExpression::Get(target, name, kind) => {
-                self.generate_get_expr_ir(target, name, kind)
+                self.generate_get_expr_ir(target, name, &kind.borrow())
             }
 
             AnnotatedExpression::Set(target, name, value, kind) => {
-                self.generate_set_ir(target, name, value, kind)
+                self.generate_set_ir(target, name, value, &kind.borrow())
             }
 
-            AnnotatedExpression::List(elements, kind) => self.generate_list_ir(elements, kind),
+            AnnotatedExpression::List(elements, kind) => {
+                self.generate_list_ir(elements, &kind.borrow())
+            }
 
             AnnotatedExpression::ListGet(list, index) => self.generate_list_get_ir(list, index),
 
@@ -910,7 +916,7 @@ impl IRGenerator {
             .get_type_by_id(method.owner_type_id)
             .unwrap();
 
-        let method_table = self.methods.get(&owner_type).unwrap();
+        let method_table = self.methods.get(&owner_type.borrow()).unwrap();
         let ir_method = method_table
             .iter()
             .find(|m| m.name == method.name)
@@ -930,7 +936,7 @@ impl IRGenerator {
         let method_index = ir_method.id;
         let method_index_bytes = self.split_u32(method_index);
 
-        let v_table_index = owner_type.id;
+        let v_table_index = owner_type.borrow().id;
         let v_table_index_bytes = self.split_u32(v_table_index);
 
         code.push(v_table_index_bytes.0);

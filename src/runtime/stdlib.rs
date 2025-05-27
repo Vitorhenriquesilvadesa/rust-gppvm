@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(deprecated)]
+#![allow(unused_variables)]
 use std::{cell::RefCell, env, io::stdin, rc::Rc};
 
 use rand::Rng;

@@ -63,6 +63,7 @@ impl Parser {
 
         while !self.is_at_end() {
             let stmt = self.declaration();
+            println!("{:#?}", stmt);
             match stmt {
                 Ok(s) => self.statements.push(s),
                 Err(e) => {

@@ -8,8 +8,13 @@ native def append(x: list, value: object) -> void;
 native def args() -> list;
 native def exit(code: int) -> void;
 
-internal def negate(self: bool) -> bool {
-    return not self;
+type Person {
+    name: str,
+    age: int,
+}
+
+internal def is_adult(self: Person) -> bool {
+    return self.age >= 18;
 }
 
 internal def sum(self: int, other: int) -> int {
@@ -17,6 +22,7 @@ internal def sum(self: int, other: int) -> int {
 }
 
 def main() -> void {
-    print(false.negate());
-    print(10.sum(10));
+    let p = Person("Fulano", 17);
+    let x = 10;
+    print(x.sum(10).sum(10));
 }

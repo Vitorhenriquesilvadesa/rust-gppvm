@@ -30,9 +30,9 @@ use std::{
     io::{self, Read},
 };
 
-use crate::read_file_without_bom;
 use crate::runtime::stdlib::StdLibrary;
 use crate::runtime::virtual_machine::VirtualMachine;
+use crate::{gpp_error, read_file_without_bom};
 
 use self::{lexer::Lexer, parser::Parser};
 
@@ -102,6 +102,8 @@ impl Compiler {
 
         let stmts = self.parser.parse(Rc::clone(&self.reporter), tokens.clone());
 
+        Self::handle_errors(&self.reporter.borrow());
+
         let semantic_code = self
             .semantic_analyzer
             .analyze(Rc::clone(&self.reporter), stmts.clone());
@@ -121,6 +123,23 @@ impl Compiler {
 
         for error in self.reporter.borrow().get_errors() {
             eprintln!("Error: {} At line {:?}.", error.msg, error.line);
+        }
+    }
+
+    fn handle_errors(reporter: &CompilerErrorReporter) {
+        if reporter.has_errors() {
+            for error in reporter.get_errors() {
+                match error.line {
+                    Some(line) => {
+                        println!("\x1b[31mError\x1b[0m: {}. At line {}.", error.msg, line);
+                    }
+                    None => {
+                        println!("\x1b[31mError\x1b[0m: {}.", error.msg);
+                    }
+                }
+            }
+
+            gpp_error!("The compiler stopped because an error occurred during one of the compilation phases.");
         }
     }
 }

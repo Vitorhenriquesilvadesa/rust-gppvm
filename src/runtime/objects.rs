@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
-use std::{ cell::RefCell, fmt::{ Debug, Display }, rc::Rc };
+use std::{
+    cell::RefCell,
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ObjectKind {

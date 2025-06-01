@@ -735,6 +735,7 @@ impl IRGenerator {
 
         if let AnnotatedExpression::Variable(name, kind) = variable {
             let index = self.get_in_depth(name.lexeme.clone());
+
             match operator.kind {
                 TokenKind::Operator(op) => match op {
                     OperatorKind::PostFixIncrement => {
@@ -867,7 +868,6 @@ impl IRGenerator {
         if let AnnotatedStatement::Scope(stmts) = body {
             for stmt in stmts {
                 let stmt_code = self.generate_ir_for(stmt);
-
                 for byte in stmt_code {
                     self.emit_byte(&mut code, byte);
                 }

@@ -278,7 +278,7 @@ impl SemanticAnalyzer {
 
         while !self.is_at_end() {
             stmt = self.current().unwrap().clone();
-            annotated_statements.push(self.analyze_stmt(&stmt));
+            annotated_statements.append(&mut self.analyze_stmt(&stmt));
             self.advance();
         }
 
@@ -308,33 +308,42 @@ impl SemanticAnalyzer {
     /// # Returns
     ///
     /// An `AnnotatedStatement` containing the analyzed and validated statement.
-    fn analyze_stmt(&mut self, stmt: &Statement) -> AnnotatedStatement {
+    fn analyze_stmt(&mut self, stmt: &Statement) -> Vec<AnnotatedStatement> {
         match stmt {
-            Statement::Return(value) => self.analyze_return(value),
-            Statement::Expression(expr) => AnnotatedStatement::Expression(self.analyze_expr(expr)),
+            Statement::Return(value) => vec![self.analyze_return(value)],
+            Statement::Expression(expr) => {
+                vec![AnnotatedStatement::Expression(self.analyze_expr(expr))]
+            }
             Statement::Decorator(hash_token, attribs) => {
-                self.analyze_decorator(hash_token, attribs)
+                vec![self.analyze_decorator(hash_token, attribs)]
             }
             Statement::Type(name, archetypes, fields) => {
-                self.analyze_type(name, archetypes, fields)
+                vec![self.analyze_type(name, archetypes, fields)]
             }
             Statement::Function(name, params, body, return_kind) => {
-                self.analyze_function(name, params, &body, return_kind)
+                vec![self.analyze_function(name, params, &body, return_kind)]
             }
             Statement::NativeFunction(name, params, return_kind) => {
-                self.analyze_native_function(name, params, return_kind)
+                vec![self.analyze_native_function(name, params, return_kind)]
             }
-            Statement::Variable(name, value) => self.analyze_variable_declaration(name, value),
+            Statement::Variable(name, value) => {
+                vec![self.analyze_variable_declaration(name, value)]
+            }
             Statement::ForEach(variable, condition, body) => {
-                self.analyze_iterator(variable, condition, &body)
+                vec![self.analyze_iterator(variable, condition, &body)]
             }
-            Statement::While(condition, body) => self.analyze_while_stmt(condition, body),
+            Statement::While(condition, body) => vec![self.analyze_while_stmt(condition, body)],
             Statement::If(keyword, condition, body, else_branch) => {
-                self.analyze_if_stmt(keyword, condition, &body, else_branch)
+                vec![self.analyze_if_stmt(keyword, condition, &body, else_branch)]
             }
-            Statement::BuiltinAttribute(name, kinds) => self.analyze_builtin_attribute(name, kinds),
+            Statement::BuiltinAttribute(name, kinds) => {
+                vec![self.analyze_builtin_attribute(name, kinds)]
+            }
             Statement::InternalDefinition(name, params, body, return_kind) => {
-                self.analyze_internal_definition(name, params, body, return_kind)
+                vec![self.analyze_internal_definition(name, params, body, return_kind)]
+            }
+            Statement::DestructurePattern(fields, value) => {
+                self.analyze_destructure_pattern(fields, value)
             }
             _ => gpp_error!("Statement {:?} not supported.", stmt),
         }
@@ -398,7 +407,11 @@ impl SemanticAnalyzer {
         match body {
             Statement::Scope(stmts) => {
                 for stmt in stmts {
-                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                    let stmt_vec = self.analyze_stmt(stmt);
+
+                    for s in stmt_vec {
+                        annotated_body.push(Box::new(s));
+                    }
                 }
             }
             _ => gpp_error!("Statement {:?} is not allowed here.", body),
@@ -679,7 +692,9 @@ impl SemanticAnalyzer {
         match body {
             Statement::Scope(stmts) => {
                 for stmt in stmts {
-                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                    for s in self.analyze_stmt(stmt) {
+                        annotated_body.push(Box::new(s));
+                    }
                 }
             }
             _ => gpp_error!("Statement {:?} is not allowed here.", body),
@@ -835,7 +850,9 @@ impl SemanticAnalyzer {
         match body {
             Statement::Scope(stmts) => {
                 for stmt in stmts {
-                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                    for s in self.analyze_stmt(stmt) {
+                        annotated_body.push(Box::new(s));
+                    }
                 }
             }
             _ => self.report_error(CompilationError::new(
@@ -854,7 +871,9 @@ impl SemanticAnalyzer {
                     self.begin_scope();
 
                     for stmt in stmts {
-                        annotated_else.push(Box::new(self.analyze_stmt(stmt)));
+                        for s in self.analyze_stmt(stmt) {
+                            annotated_else.push(Box::new(s));
+                        }
                     }
 
                     self.end_scope();
@@ -1163,7 +1182,7 @@ impl SemanticAnalyzer {
                         OperatorKind::Greater
                         | OperatorKind::GreaterEqual
                         | OperatorKind::Less
-                        | OperatorKind::LessEqual
+                        | OperatorKind::NotEqual
                         | OperatorKind::EqualEqual => {
                             return self.get_static_kind_by_name("bool");
                         }
@@ -1290,6 +1309,10 @@ impl SemanticAnalyzer {
                     ),
                 },
                 None => {
+                    if self.check_type_exists(&token.lexeme) {
+                        return self.get_static_kind_by_name(&token.lexeme);
+                    }
+
                     i -= 1;
                     continue;
                 }
@@ -1588,7 +1611,7 @@ impl SemanticAnalyzer {
                     )
                 }
 
-                OperatorKind::EqualEqual => {
+                OperatorKind::EqualEqual | OperatorKind::NotEqual => {
                     let expected_kind = self.resolve_expr_type(&left);
                     self.assert_expression_kind(&right, expected_kind, &token);
 
@@ -1851,7 +1874,7 @@ impl SemanticAnalyzer {
                     let method = self.analyze_method_get(&callee, token.clone());
                     let mut annotated_args: Vec<Box<AnnotatedExpression>> = Vec::new();
 
-                    if args.len() != method.params.len() {
+                    if args.len() != method.params.len() - 1 {
                         println!(
                             "Expect {} arguments, but got {}. At line {}.",
                             method.arity,
@@ -2459,6 +2482,24 @@ impl SemanticAnalyzer {
                 self.resolve_expr_type(expression),
             ),
 
+            Expression::Call(callee, paren, args) => {
+                let kind = self.resolve_expr_type(callee);
+
+                if kind.borrow().fields.contains_key(&token.lexeme) {
+                    return AnnotatedExpression::Get(
+                        Box::new(self.analyze_expr(expression)),
+                        token.clone(),
+                        self.resolve_expr_type(expression),
+                    );
+                } else {
+                    gpp_error!(
+                        "Type '{}' has no property named '{}'.",
+                        kind.borrow().name,
+                        token.lexeme
+                    );
+                }
+            }
+
             _ => {
                 panic!("Unsupported get expression: {:?}", expression);
             }
@@ -2558,7 +2599,9 @@ impl SemanticAnalyzer {
         match body {
             Statement::Scope(statements) => {
                 for stmt in statements {
-                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                    for s in self.analyze_stmt(stmt) {
+                        annotated_body.push(Box::new(s));
+                    }
                 }
             }
 
@@ -2814,7 +2857,9 @@ impl SemanticAnalyzer {
         match body {
             Statement::Scope(stmts) => {
                 for stmt in stmts {
-                    annotated_body.push(Box::new(self.analyze_stmt(stmt)));
+                    for s in self.analyze_stmt(stmt) {
+                        annotated_body.push(Box::new(s));
+                    }
                 }
             }
             _ => gpp_error!("Statement {:?} is not allowed here.", body),
@@ -2861,5 +2906,48 @@ impl SemanticAnalyzer {
             callee_kind.borrow().name,
             token.lexeme
         );
+    }
+
+    fn analyze_destructure_pattern(
+        &mut self,
+        fields: &Vec<Token>,
+        value: &Expression,
+    ) -> Vec<AnnotatedStatement> {
+        let value_kind = self.resolve_expr_type(value);
+        let mut declarations: Vec<AnnotatedStatement> = Vec::new();
+
+        for field in fields {
+            if value_kind.borrow().fields.contains_key(&field.lexeme) {
+                let field_kind = value_kind.borrow().fields[&field.lexeme].kind.clone();
+                if self.context().contains_name(&field.lexeme) {
+                    gpp_error!("The name '{}' was previous declared in current scope.\nPrevious declaration at line {}.\nMultiple declarations of '{}' within the same scope are not allowed."
+               , field.lexeme, self.context().name(&field.lexeme).unwrap().line, field.lexeme);
+                }
+
+                self.define_local(
+                    &field.lexeme,
+                    SemanticValue::new(Some(field_kind), Value::Internal, field.line),
+                );
+
+                let get_kind =
+                    self.resolve_expr_type(&Expression::Get(Rc::new(value.clone()), field.clone()));
+
+                let field_get = AnnotatedExpression::Get(
+                    Box::new(self.analyze_expr(value)),
+                    field.clone(),
+                    value_kind.clone(),
+                );
+
+                declarations.push(AnnotatedStatement::Variable(field.clone(), Some(field_get)));
+            } else {
+                gpp_error!(
+                    "Type '{}' has not field named '{}'.",
+                    value_kind.borrow().name,
+                    field.lexeme
+                );
+            }
+        }
+
+        declarations
     }
 }

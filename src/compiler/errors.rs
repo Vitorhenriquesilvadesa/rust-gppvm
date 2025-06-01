@@ -34,7 +34,11 @@ pub struct CompilationError {
 
 impl CompilationError {
     pub fn new(msg: String, line: Option<usize>) -> Self {
-        Self { msg, kind: CompilationErrorKind::IllegalCharacter, line }
+        Self {
+            msg,
+            kind: CompilationErrorKind::IllegalCharacter,
+            line,
+        }
     }
 }
 
@@ -60,7 +64,9 @@ pub struct CompilerErrorReporter {
 
 impl CompilerErrorReporter {
     pub fn new() -> Self {
-        Self { stack: CompilerErrorStack::new() }
+        Self {
+            stack: CompilerErrorStack::new(),
+        }
     }
 
     pub fn report_error(&mut self, error: CompilationError) {
@@ -69,5 +75,9 @@ impl CompilerErrorReporter {
 
     pub fn get_errors(&self) -> &Vec<CompilationError> {
         &self.stack.errors
+    }
+
+    pub fn has_errors(&self) -> bool {
+        self.stack.errors.len() > 0
     }
 }

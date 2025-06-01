@@ -71,7 +71,10 @@ impl Decompiler {
                         );
                         *index += 2;
                     }
-                    Instruction::GetLocal | Instruction::SetLocal | Instruction::IncrementLocal => {
+                    Instruction::GetLocal
+                    | Instruction::SetLocal
+                    | Instruction::IncrementLocal
+                    | Instruction::DecrementLocal => {
                         println!(
                             "{}  {} {}",
                             instr_index,

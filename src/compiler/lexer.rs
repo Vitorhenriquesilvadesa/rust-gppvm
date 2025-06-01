@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use super::errors::CompilerErrorReporter;
+use super::errors::{CompilationError, CompilerErrorReporter};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -303,6 +303,11 @@ impl Lexer {
                     self.make_token(TokenKind::Operator(OperatorKind::Slash))
                 }
             }
+            '!' => {
+                if self.try_eat('=') {
+                    self.make_token(TokenKind::Operator(OperatorKind::NotEqual));
+                }
+            }
             ',' => self.make_token(TokenKind::Punctuation(PunctuationKind::Comma)),
             ':' => self.make_token(TokenKind::Punctuation(PunctuationKind::Colon)),
             ';' => self.make_token(TokenKind::Punctuation(PunctuationKind::SemiColon)),
@@ -342,8 +347,12 @@ impl Lexer {
                 _ if self.is_digit(c) => self.number(),
                 _ if self.is_alpha(c) => self.identifier().expect("Error in identifier."),
                 _ => {
-                    dbg!(&c);
-                    panic!("Invalid character '{}' at line {}", c, self.line);
+                    self.reporter
+                        .borrow_mut()
+                        .report_error(CompilationError::new(
+                            format!("Invalid character '{}'", c),
+                            Some(self.line),
+                        ));
                 }
             },
         }

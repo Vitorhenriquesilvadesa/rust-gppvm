@@ -68,6 +68,7 @@ impl NativeBridge for VirtualMachine {
         match func_info {
             Some(info) => {
                 let index = info.id;
+                println!("Linking: {} function.", name);
                 self.native_functions[index as usize] = NativeFunction::new(func, info.arity);
             }
 
@@ -92,7 +93,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_add(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -114,7 +115,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_sub(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -136,7 +137,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_div(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -158,7 +159,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_mul(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -180,7 +181,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_push(&mut self) {
         let constant_index = self.read_u16();
 
@@ -191,17 +192,17 @@ impl VirtualMachine {
         self.push(constant);
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_pop(&mut self) {
         self.pop();
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_void(&mut self) {
         self.push(Value::Void);
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_greater(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -223,7 +224,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_less(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -245,7 +246,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_greater_equal(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -267,7 +268,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_less_equal(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -289,7 +290,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_cmp(&mut self) {
         let a = self.pop();
         let b = self.pop();
@@ -311,17 +312,17 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_true(&mut self) {
         self.push(Value::Bool(true));
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_false(&mut self) {
         self.push(Value::Bool(false));
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_field(&mut self) {
         let object = self.pop();
         let index = self.read_byte();
@@ -354,7 +355,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_new(&mut self) {
         let arity = self.read_byte();
 
@@ -369,7 +370,7 @@ impl VirtualMachine {
         self.push(Value::Object(Rc::new(RefCell::new(Instance::new(fields)))));
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_print(&mut self) {
         let value = self.pop();
 
@@ -385,51 +386,51 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_set_local(&mut self) {
         let value = self.pop();
         let index = self.read_byte();
         self.stack[index as usize] = value;
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local(&mut self) {
         let index = self.read_byte();
         let value = &self.stack[self.fp + (index as usize)];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local0(&mut self) {
         let value = &self.stack[self.fp];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local1(&mut self) {
         let value = &self.stack[self.fp + 1];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local2(&mut self) {
         let value = &self.stack[self.fp + 2];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local3(&mut self) {
         let value = &self.stack[self.fp + 3];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_get_local4(&mut self) {
         let value = &self.stack[self.fp + 4];
         self.push(value.clone());
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_increment_local(&mut self) {
         let index = self.read_byte();
         let value = &self.stack[index as usize];
@@ -439,7 +440,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_decrement_local(&mut self) {
         let index = self.read_byte();
         let value = &self.stack[index as usize];
@@ -449,7 +450,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_call(&mut self) {
         let index = self.read_u32();
         let arity = self.read_byte();
@@ -466,7 +467,7 @@ impl VirtualMachine {
         self.attach_method(v_table_index, function_index, arity);
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_invoke_native(&mut self) {
         let index = self.read_u32();
         let arity = self.read_byte();
@@ -488,7 +489,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_return(&mut self) {
         let ret_value = self.pop();
 
@@ -500,19 +501,19 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_loop(&mut self) {
         let offset = self.read_u32();
         self.ip -= offset as usize;
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_jump(&mut self) {
         let offset = self.read_u32();
         self.ip += offset as usize;
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_jfalse(&mut self) {
         let offset = self.read_u32();
         let value = self.pop();
@@ -524,7 +525,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_jtrue(&mut self) {
         let offset = self.read_u32();
         let value = self.pop();
@@ -536,7 +537,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_not(&mut self) {
         let value = self.pop();
 
@@ -554,7 +555,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_list_get(&mut self) {
         let index = self.pop();
         let list = self.pop();
@@ -579,7 +580,7 @@ impl VirtualMachine {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn handle_array(&mut self) {
         let arity = self.read_byte();
 
@@ -604,18 +605,21 @@ impl VirtualMachine {
         self.attach_main_fn();
         self.native_functions = vec![
             NativeFunction::new(Self::invalidate_native_call, 0);
-            bytecode.native_functions.len()
+            bytecode.native_functions.len() + 1
         ];
     }
 
     pub fn interpret(&mut self) {
         self.attach_main_fn();
+        println!("{}", "=".repeat(60));
+        println!("Running code");
+        println!("{}", "=".repeat(60));
         let timer = std::time::Instant::now();
         self.execution_loop();
         println!("Virtual machine took: {:?}", timer.elapsed());
     }
 
-    #[inline(always)]
+    #[inline]
     fn execution_loop(&mut self) {
         loop {
             let byte = self.read_byte();

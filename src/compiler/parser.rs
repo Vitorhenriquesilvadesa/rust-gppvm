@@ -63,11 +63,10 @@ impl Parser {
 
         while !self.is_at_end() {
             let stmt = self.declaration();
-            println!("{:#?}", stmt);
             match stmt {
                 Ok(s) => self.statements.push(s),
                 Err(e) => {
-                    println!("{}", e.message);
+                    self.report_error(CompilationError::new(e.message, Some(e.line)));
                     self.synchronize();
                 }
             }
@@ -705,6 +704,10 @@ impl Parser {
     }
 
     fn variable_declaration(&mut self) -> Result<Statement, ParseError> {
+        if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::LeftBrace)]) {
+            return self.parse_destructure_variables();
+        }
+
         let name = self.eat(
             TokenKind::Identifier,
             String::from("Expect identifier after 'let'."),
@@ -1222,5 +1225,44 @@ impl Parser {
                 }
             }
         }
+    }
+
+    fn parse_destructure_variables(&mut self) -> Result<Statement, ParseError> {
+        let mut names: Vec<Token> = Vec::new();
+
+        let first = self.eat(
+            TokenKind::Identifier,
+            "Expect identifier after '{' in destructure declaration".into(),
+        )?;
+
+        names.push(first);
+
+        while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Comma)]) {
+            let name = self.eat(TokenKind::Identifier, "Expect field name after ','".into())?;
+            names.push(name);
+        }
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::RightBrace),
+            format!(
+                "Expect '}}' after fields in destructure declaration, but got '{}'",
+                self.peek().lexeme
+            )
+            .into(),
+        )?;
+
+        self.eat(
+            TokenKind::Operator(OperatorKind::Equal),
+            "Expect '=' after destructure declaration fields".into(),
+        )?;
+
+        let value = self.expression()?;
+
+        self.eat(
+            TokenKind::Punctuation(PunctuationKind::SemiColon),
+            "Expect ';' after destructure declaration value.".into(),
+        )?;
+
+        return Ok(Statement::DestructurePattern(names, value));
     }
 }

@@ -4,8 +4,18 @@ i = 0
 
 start = time.time()
 
-while i < 100000000:
-    i += 1
+def main():
+    i = 0
+
+    while i < 1000:
+        print("Hello".startswith("He"))     # True
+        print("Hello".endswith("lo"))       # True
+        print("ell" in "Hello")             # True
+        print("Hello".find("l"))            # 2
+        print("He" + "llo")                 # "Hello"
+        i += 1
+
+main()
     
 end = time.time()
 

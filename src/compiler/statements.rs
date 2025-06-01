@@ -22,6 +22,7 @@ pub enum Statement {
     Function(Token, Vec<FieldDeclaration>, Rc<Statement>, Expression),
     Global,
     Variable(Token, Option<Expression>),
+    DestructurePattern(Vec<Token>, Expression),
     InternalDefinition(Token, Vec<FieldDeclaration>, Rc<Statement>, Expression),
     // endregion:  --- Statements
 

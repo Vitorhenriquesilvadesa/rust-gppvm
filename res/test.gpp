@@ -120,26 +120,15 @@ type Person {
     age: int,
 }
 
-def main() -> void {
-    let pos = Vec3(0.4, 1.2, 3.3);
-    let p = Person("Fulano", 30);
-
-    let { x, y, z } = pos;
-    let { name, age } = p;
-
-    let i = 0;
-
-    while i > -10 {
-        let j = 0;
-        while j < 10 {
-            j++;
-        }
-        print(i);
-        i--;
-    }
-
-    print(10.pow(3));
-
-    print(x);
-
+def call_func() -> void {
+    let y = 0;
+    y = y + 1;
 }
+
+def main() -> void {
+    let x = 10;
+    call_func();
+    print(x);
+}
+
+

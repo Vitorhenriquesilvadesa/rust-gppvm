@@ -391,7 +391,7 @@ impl VirtualMachine {
     #[inline]
     pub fn handle_set_local(&mut self) {
         let value = self.pop();
-        let index = self.read_byte();
+        let index = self.fp + (self.read_byte() as usize);
         self.stack[index as usize] = value;
     }
 

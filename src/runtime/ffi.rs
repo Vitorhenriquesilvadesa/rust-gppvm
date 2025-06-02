@@ -2,7 +2,7 @@ use super::objects::Value;
 
 pub type NativeFnPtr = fn(Vec<Value>) -> Value;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NativeFunction {
     pub handler: NativeFnPtr,
     pub arity: u8,
@@ -11,11 +11,19 @@ pub struct NativeFunction {
 
 impl NativeFunction {
     pub fn new(handler: NativeFnPtr, arity: u8) -> Self {
-        Self { handler, arity, name: String::from("unamed_native_fn") }
+        Self {
+            handler,
+            arity,
+            name: String::from("unamed_native_fn"),
+        }
     }
 
     pub fn named(handler: NativeFnPtr, arity: u8, name: String) -> Self {
-        Self { handler, arity, name }
+        Self {
+            handler,
+            arity,
+            name,
+        }
     }
 }
 

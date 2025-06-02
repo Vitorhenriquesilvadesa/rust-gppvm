@@ -98,6 +98,17 @@ internal def min(self: int, other: int) -> int {
     return int_min(self, other);
 }
 
+internal def pow(self: int, exp: int) -> int {
+    let result = self;
+    
+    while exp > 1 {
+        result = result * self;
+        exp--;
+    }
+
+    return result;
+}
+
 type Vec3 {
     x: float,
     y: float,
@@ -115,10 +126,20 @@ def main() -> void {
 
     let { x, y, z } = pos;
     let { name, age } = p;
-    
+
+    let i = 0;
+
+    while i > -10 {
+        let j = 0;
+        while j < 10 {
+            j++;
+        }
+        print(i);
+        i--;
+    }
+
+    print(10.pow(3));
+
     print(x);
-    print(y);
-    print(z);
-    print(name);
-    print(age);
+
 }

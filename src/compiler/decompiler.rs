@@ -106,6 +106,27 @@ impl Decompiler {
                     }
 
                     Instruction::InvokeVirtual => {
+                        let vtable_index = Decompiler::combine_u8_to_u32(
+                            code[*index + 1],
+                            code[*index + 2],
+                            code[*index + 3],
+                            code[*index + 4],
+                        );
+
+                        let function_index = Decompiler::combine_u8_to_u32(
+                            code[*index + 5],
+                            code[*index + 6],
+                            code[*index + 7],
+                            code[*index + 8],
+                        );
+
+                        let arity = code[*index + 9];
+
+                        println!(
+                            "{}  {} {}   ; ({} args)",
+                            instr_index, padded_instruction, function_index, arity
+                        );
+
                         *index += 9;
                     }
 
@@ -138,6 +159,10 @@ impl Decompiler {
 
                         println!("{}  {} {}", instr_index, padded_instruction, field_index);
                         *index += 1;
+                    }
+
+                    Instruction::Greater => {
+                        println!("{} greater", instr_index);
                     }
 
                     Instruction::JFalse
@@ -183,6 +208,7 @@ impl Decompiler {
         let mut index = 0usize;
         for method in info {
             let width = 60;
+
             println!(
                 "{}",
                 format!(
@@ -194,6 +220,8 @@ impl Decompiler {
                     width
                 )
             );
+
+            index = 0;
 
             while index < method.chunk.code.len() {
                 Decompiler::decompile_instruction(&mut index, &method.chunk, &ir);

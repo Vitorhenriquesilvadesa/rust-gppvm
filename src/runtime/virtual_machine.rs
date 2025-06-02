@@ -21,6 +21,7 @@ impl Chunk {
     }
 }
 
+#[derive(Debug)]
 struct Frame {
     pub chunk: Rc<Chunk>,
     pub sp: usize,
@@ -51,6 +52,7 @@ impl Frame {
     }
 }
 
+#[derive(Debug)]
 pub struct VirtualMachine {
     pub ip: usize,
     pub sp: usize,
@@ -432,8 +434,8 @@ impl VirtualMachine {
 
     #[inline]
     pub fn handle_increment_local(&mut self) {
-        let index = self.read_byte();
-        let value = &self.stack[index as usize];
+        let index = self.fp + (self.read_byte() as usize);
+        let value = &self.stack[index];
 
         if let Value::Int(i) = value {
             self.stack[index as usize] = Value::Int(i + 1);
@@ -442,11 +444,15 @@ impl VirtualMachine {
 
     #[inline]
     pub fn handle_decrement_local(&mut self) {
-        let index = self.read_byte();
-        let value = &self.stack[index as usize];
+        let index = self.fp + (self.read_byte() as usize);
+        let value = &self.stack[index];
 
         if let Value::Int(i) = value {
-            self.stack[index as usize] = Value::Int(i - 1);
+            self.stack[index] = Value::Int(i - 1);
+        } else {
+            print!("VM Debug Data: ");
+            self.print_stack();
+            panic!("Cannot decrement '{}' value.", value);
         }
     }
 
@@ -790,5 +796,9 @@ impl VirtualMachine {
 
     pub fn load_library(&mut self, lib: &mut dyn NativeLibrary) {
         lib.register_functions(self);
+    }
+
+    fn print_info(&self) {
+        println!("{:?}", self.frame_stack);
     }
 }

@@ -2829,7 +2829,7 @@ impl SemanticAnalyzer {
             };
 
         let target = self.resolve_expr_type(&params[0].kind);
-        let target_name = target.borrow().name.clone(); // encerra o borrow logo
+        let target_name = target.borrow().name.clone();
         let target_id = target.borrow().id;
         self.current_descriptor_id = Some(target_id);
 

@@ -11,7 +11,7 @@ pub enum Statement {
     Expression(Expression),
     Match,
     Scope(Vec<Rc<Statement>>),
-    Import(Token),
+    Import(Vec<Token>),
     Return(Option<Expression>),
     // endregion:  --- Statements
 

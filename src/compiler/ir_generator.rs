@@ -925,9 +925,6 @@ impl IRGenerator {
             .unwrap()
             .clone();
 
-        let mut self_code = self.generate_expr_ir(object);
-        code.append(&mut self_code);
-
         for arg in args {
             let mut arg_code = self.generate_expr_ir(arg);
             code.append(&mut arg_code);

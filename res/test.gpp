@@ -1,24 +1,25 @@
-native def print(x: object) -> void;
-native def len(l: list) -> int;
-native def list_append(l: list, x: object) -> void;
-native def list_pop(l: list, i: int) -> void;
+import stdlib.math;
 
-internal def length(self: list) -> int {
-    return len(self);
-}
+def get_point() -> Vec2 {
+    let x;
+    let y;
 
-internal def append(self: list, x: object) -> void {
-    list_append(self, x);
-}
+    print("Insira a coordenada X: ");
+    x = input();
+    print("Insira a coordenada Y: ");
+    y = input();
+    println("");
 
-internal def pop(self: list, index: int) -> void {
-    list_pop(self, index);
+    return Vec2(float(x), float(y));
 }
 
 def main() -> void {
-    let x = [1, 2, 3];
-    x.append(4);
-    x.pop(0);
+    let p1 = get_point();
+    let p2 = get_point();
 
-    print(x);
+    let d = p1.distance(p2);
+
+    print("Distancia entre os pontos: ");
+    println(d);
+    println("");
 }

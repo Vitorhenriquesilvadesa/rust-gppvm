@@ -14,7 +14,11 @@ use std::{
 
 use rand::seq::index;
 
-use crate::{gpp_error, runtime::objects::List};
+use crate::{
+    compiler::{lexer::Lexer, parser::Parser, CompilerArguments, CompilerConfig},
+    gpp_error, read_file_without_bom,
+    runtime::objects::List,
+};
 
 use super::{
     ast::FieldDeclaration,
@@ -29,6 +33,7 @@ use super::{
 pub struct SemanticAnalyzer {
     statements: Vec<Statement>,
     context_stack: ContextStack,
+    config: Option<CompilerConfig>,
     symbol_table: SymbolTable,
     current_stmt: usize,
     current_symbol: String,
@@ -39,13 +44,16 @@ pub struct SemanticAnalyzer {
     reporter: Rc<RefCell<CompilerErrorReporter>>,
     void_instance: Rc<RefCell<TypeDescriptor>>,
     default_attributes: DefaultAttributes,
+    modules: Vec<String>,
 }
 
 impl SemanticAnalyzer {
     pub fn new() -> Self {
         let mut analyzer = Self {
+            modules: Vec::new(),
             current_descriptor_id: None,
             current_return_kind_id: None,
+            config: None,
             statements: Vec::new(),
             context_stack: ContextStack::new(),
             current_stmt: 0,
@@ -269,14 +277,18 @@ impl SemanticAnalyzer {
         &mut self,
         reporter: Rc<RefCell<CompilerErrorReporter>>,
         statements: Vec<Statement>,
+        config: &CompilerConfig,
     ) -> SemanticCode {
-        self.reset_internal_state(statements);
+        self.reset_internal_state(statements, config);
 
         self.reporter = reporter;
 
         let mut stmt: Statement;
 
         let mut annotated_statements: Vec<AnnotatedStatement> = Vec::new();
+
+        let mut prelude = self.setup_prelude();
+        annotated_statements.append(&mut prelude);
 
         while !self.is_at_end() {
             stmt = self.current().unwrap().clone();
@@ -348,6 +360,10 @@ impl SemanticAnalyzer {
                 self.analyze_destructure_pattern(fields, value)
             }
             Statement::Scope(stmts) => self.analyze_scope(stmts),
+            Statement::Import(module) => self.analyze_import(module),
+            Statement::EndCode => {
+                vec![]
+            }
             _ => gpp_error!("Statement {:?} not supported.", stmt),
         }
     }
@@ -1063,8 +1079,9 @@ impl SemanticAnalyzer {
     ///
     /// # Parameters
     /// - `statements`: A vector of statements to initialize the internal statements list with.
-    fn reset_internal_state(&mut self, statements: Vec<Statement>) {
+    fn reset_internal_state(&mut self, statements: Vec<Statement>, config: &CompilerConfig) {
         self.statements = statements;
+        self.config = Some(config.clone());
         self.context_stack = ContextStack::new();
         self.current_stmt = 0;
     }
@@ -1479,7 +1496,11 @@ impl SemanticAnalyzer {
     /// # Panics
     /// - Panics if the symbol does not exist in the symbol table.
     fn get_static_kind_by_name(&self, name: &str) -> Rc<RefCell<TypeDescriptor>> {
-        self.symbol_table.get(name).unwrap().kind.clone()
+        if self.check_type_exists(&name.to_string()) {
+            self.symbol_table.get(name).unwrap().kind.clone()
+        } else {
+            gpp_error!("Type '{}' is not declared in this scope.", name);
+        }
     }
 
     fn get_static_kind_by_id(&self, id: u32) -> Rc<RefCell<TypeDescriptor>> {
@@ -3009,5 +3030,63 @@ impl SemanticAnalyzer {
         self.end_scope();
 
         annotated_stmts
+    }
+
+    fn analyze_import(&mut self, module: &Vec<Token>) -> Vec<AnnotatedStatement> {
+        let mut mod_path = self.config.clone().unwrap().root;
+
+        for part in 0..module.len() - 1 {
+            mod_path = mod_path.join(&module[part].lexeme);
+        }
+
+        mod_path = mod_path.join(format!("{}{}", module.last().unwrap().lexeme, ".gpp"));
+
+        if self
+            .modules
+            .contains(&mod_path.to_str().unwrap().to_string())
+        {
+            return vec![];
+        }
+
+        self.modules.push(mod_path.to_str().unwrap().to_string());
+
+        let source = read_file_without_bom(mod_path.to_str().unwrap()).unwrap();
+
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.scan_tokens(self.reporter.clone()).clone();
+        let mut parser = Parser::new();
+        let stmts = parser.parse(self.reporter.clone(), tokens);
+
+        let mut annotated_stmts: Vec<AnnotatedStatement> = Vec::new();
+        for stmt in stmts {
+            annotated_stmts.append(&mut self.analyze_stmt(stmt));
+        }
+
+        annotated_stmts
+    }
+
+    fn setup_prelude(&mut self) -> Vec<AnnotatedStatement> {
+        let mut stmts: Vec<AnnotatedStatement> = Vec::new();
+
+        let std_core = self.build_import_path(&["stdlib", "prelude"]);
+
+        self.import(&std_core, &mut stmts);
+
+        stmts
+    }
+
+    fn import(&mut self, path: &Vec<Token>, stmts: &mut Vec<AnnotatedStatement>) {
+        let mut import_stmts = self.analyze_import(path);
+        stmts.append(&mut import_stmts);
+    }
+
+    fn build_import_path(&self, path: &[&str]) -> Vec<Token> {
+        let mut tokens: Vec<Token> = Vec::new();
+
+        for p in path {
+            tokens.push(Token::new(TokenKind::Identifier, (*p).into(), 1, 0));
+        }
+
+        tokens
     }
 }

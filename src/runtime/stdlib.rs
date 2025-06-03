@@ -1,11 +1,21 @@
 #![allow(dead_code)]
 #![allow(deprecated)]
 #![allow(unused_variables)]
-use std::{cell::RefCell, env, io::stdin, rc::Rc};
+use std::fs::{write, OpenOptions};
+use std::io::Write;
+use std::path::Path;
+use std::{
+    cell::RefCell,
+    env,
+    io::{self},
+    rc::Rc,
+    thread::sleep,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use rand::Rng;
 
-use crate::register_native_funcs;
+use crate::{gpp_error, read_file_without_bom, register_native_funcs};
 
 use super::{
     ffi::{NativeBridge, NativeLibrary},
@@ -19,9 +29,36 @@ impl StdLibrary {
         Self {}
     }
 
-    fn print(args: Vec<Value>) -> Value {
-        println!("{}", args[0]);
+    pub fn print(args: Vec<Value>) -> Value {
+        if let Some(val) = args.first() {
+            print!("{}", val);
+            io::stdout().flush().unwrap();
+        }
         Value::Void
+    }
+
+    pub fn println(args: Vec<Value>) -> Value {
+        if let Some(val) = args.first() {
+            println!("{}", val);
+        }
+        Value::Void
+    }
+
+    pub fn debug(args: Vec<Value>) -> Value {
+        if let Some(val) = args.first() {
+            eprintln!("[DEBUG] {}", val);
+        }
+        Value::Void
+    }
+
+    pub fn input(_: Vec<Value>) -> Value {
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer).unwrap();
+        Value::String(Rc::new(buffer.trim_end().to_string()))
+    }
+
+    pub fn read_line(_: Vec<Value>) -> Value {
+        Self::input(vec![])
     }
 
     fn int(args: Vec<Value>) -> Value {
@@ -57,10 +94,53 @@ impl StdLibrary {
         }
     }
 
-    fn input(args: Vec<Value>) -> Value {
-        let mut line = String::new();
-        stdin().read_line(&mut line).unwrap();
-        Value::String(Rc::new(line.trim().to_string()))
+    pub fn read_int(_: Vec<Value>) -> Value {
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer).unwrap();
+        match buffer.trim().parse::<i32>() {
+            Ok(n) => Value::Int(n),
+            Err(_) => gpp_error!("Cannot perform read_int."),
+        }
+    }
+
+    pub fn read_float(_: Vec<Value>) -> Value {
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer).unwrap();
+        match buffer.trim().parse::<f32>() {
+            Ok(n) => Value::Float(n),
+            Err(_) => gpp_error!("Cannot perform read_float."),
+        }
+    }
+
+    pub fn read_file(args: Vec<Value>) -> Value {
+        if let Some(Value::String(path)) = args.first() {
+            match read_file_without_bom(path) {
+                Ok(content) => Value::String(Rc::new(content)),
+                Err(_) => Value::String(Rc::new("".to_string())),
+            }
+        } else {
+            Value::String(Rc::new("".to_string()))
+        }
+    }
+
+    pub fn write_file(args: Vec<Value>) -> Value {
+        if args.len() == 2 {
+            if let (Value::String(path), Value::String(content)) = (&args[0], &args[1]) {
+                let _ = write(Path::new(&**path), &**content);
+            }
+        }
+        Value::Void
+    }
+
+    pub fn append_file(args: Vec<Value>) -> Value {
+        if args.len() == 2 {
+            if let (Value::String(path), Value::String(content)) = (&args[0], &args[1]) {
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&**path) {
+                    let _ = writeln!(file, "{}", &**content);
+                }
+            }
+        }
+        Value::Void
     }
 
     fn exit(args: Vec<Value>) -> Value {
@@ -306,6 +386,38 @@ impl StdLibrary {
         }
     }
 
+    fn int_sqrt(args: Vec<Value>) -> Value {
+        if let Value::Int(a) = args[0] {
+            Value::Float((a as f32).sqrt())
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn float_sqrt(args: Vec<Value>) -> Value {
+        if let Value::Float(a) = args[0] {
+            Value::Float(a.sqrt())
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn sleep(args: Vec<Value>) -> Value {
+        if let Value::Int(i) = args[0] {
+            sleep(Duration::from_millis(i as u64));
+        }
+
+        Value::Void
+    }
+
+    fn now_ms(_args: Vec<Value>) -> Value {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("System time before UNIX EPOCH");
+
+        Value::Int(now.as_millis() as i32)
+    }
+
     fn int_clamp(args: Vec<Value>) -> Value {
         if let (Value::Int(x), Value::Int(min), Value::Int(max)) = (&args[0], &args[1], &args[2]) {
             Value::Int(*x.clamp(min, max))
@@ -330,9 +442,20 @@ impl NativeLibrary for StdLibrary {
             bridge,
             [
                 print,
+                println,
+                debug,
                 input,
+                read_line,
+                read_int,
+                read_float,
+                read_file,
+                write_file,
+                append_file,
                 int,
                 float,
+                bool,
+                int_to_float,
+                float_to_int,
                 random_range,
                 len,
                 list_append,
@@ -340,8 +463,6 @@ impl NativeLibrary for StdLibrary {
                 args,
                 exit,
                 str_len,
-                int_to_float,
-                float_to_int,
                 str_eq,
                 str_starts_with,
                 str_ends_with,
@@ -359,7 +480,11 @@ impl NativeLibrary for StdLibrary {
                 int_max,
                 int_min,
                 int_clamp,
-                exception
+                int_sqrt,
+                exception,
+                now_ms,
+                float_sqrt,
+                sleep
             ]
         );
     }

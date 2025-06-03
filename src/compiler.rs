@@ -22,6 +22,7 @@ use ir_generator::IRGenerator;
 use semantics::SemanticAnalyzer;
 
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Instant;
 use std::{env, fs};
@@ -40,13 +41,24 @@ pub struct CompilerArguments {
     args: Vec<String>,
 }
 
+#[derive(Clone)]
+pub struct CompilerConfig {
+    pub root: PathBuf,
+}
+
+impl CompilerConfig {
+    fn new<P: Into<PathBuf>>(path: P) -> Self {
+        Self { root: path.into() }
+    }
+}
+
 impl CompilerArguments {
     pub fn new(args: Vec<String>) -> Self {
         Self { args }
     }
 }
 
-pub fn run(config: CompilerArguments) -> Result<(), String> {
+pub fn run(arguments: CompilerArguments) -> Result<(), String> {
     let path = format!(
         "{}{}{}",
         env::current_dir()
@@ -54,10 +66,16 @@ pub fn run(config: CompilerArguments) -> Result<(), String> {
             .to_str()
             .unwrap_or(""),
         std::path::MAIN_SEPARATOR,
-        config.args[1].as_str()
+        arguments.args[1].as_str()
     );
 
-    println!("{}", path);
+    let full_path = PathBuf::from(&path);
+    let root = full_path
+        .parent()
+        .ok_or("Cannot get parent directory.")?
+        .to_path_buf();
+
+    let configuration = CompilerConfig::new(root);
 
     let source = match read_file_without_bom(&path) {
         Ok(s) => s,
@@ -66,7 +84,7 @@ pub fn run(config: CompilerArguments) -> Result<(), String> {
         }
     };
 
-    let mut compiler = Compiler::new();
+    let mut compiler = Compiler::new(arguments, configuration);
 
     let start = Instant::now();
     compiler.compile(source);
@@ -82,16 +100,20 @@ pub struct Compiler {
     semantic_analyzer: semantics::SemanticAnalyzer,
     ir_generator: IRGenerator,
     reporter: Rc<RefCell<CompilerErrorReporter>>,
+    pub args: CompilerArguments,
+    pub config: CompilerConfig,
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(args: CompilerArguments, config: CompilerConfig) -> Self {
         Compiler {
             lexer: Lexer::without_source(),
             parser: Parser::new(),
             semantic_analyzer: SemanticAnalyzer::new(),
             ir_generator: IRGenerator::new(),
             reporter: Rc::new(RefCell::new(CompilerErrorReporter::new())),
+            args,
+            config,
         }
     }
 
@@ -104,14 +126,14 @@ impl Compiler {
 
         Self::handle_errors(&self.reporter.borrow());
 
-        let semantic_code = self
-            .semantic_analyzer
-            .analyze(Rc::clone(&self.reporter), stmts.clone());
+        let semantic_code =
+            self.semantic_analyzer
+                .analyze(Rc::clone(&self.reporter), stmts.clone(), &self.config);
         let ir_code = self
             .ir_generator
             .generate(Rc::clone(&self.reporter), &semantic_code);
 
-        Decompiler::decompile(&ir_code);
+        //Decompiler::decompile(&ir_code);
 
         let bytecode_generator = BytecodeGenerator::new();
         let bytecode = bytecode_generator.generate(&ir_code);

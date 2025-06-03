@@ -762,17 +762,25 @@ impl Parser {
     }
 
     fn import_statement(&mut self) -> Result<Statement, ParseError> {
-        let module_name = self.eat(
+        let root = self.eat(
             TokenKind::Identifier,
             String::from("Expect module name after 'import'."),
         )?;
 
+        let mut path: Vec<Token> = Vec::new();
+        path.push(root);
+
+        while self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
+            let part = self.eat(TokenKind::Identifier, "Expect module name after '.'".into())?;
+            path.push(part);
+        }
+
         self.eat(
             TokenKind::Punctuation(PunctuationKind::SemiColon),
             String::from("Expect ';' after module import."),
-        );
+        )?;
 
-        Ok(Statement::Import(module_name))
+        Ok(Statement::Import(path))
     }
 
     fn variable_declaration(&mut self) -> Result<Statement, ParseError> {

@@ -221,7 +221,7 @@ impl StdLibrary {
         Value::Object(Rc::new(RefCell::new(list)))
     }
 
-    fn append(args: Vec<Value>) -> Value {
+    fn list_append(args: Vec<Value>) -> Value {
         if let Value::Object(obj_ptr) = &args[0] {
             let value = &args[1];
             obj_ptr
@@ -231,6 +231,26 @@ impl StdLibrary {
                 .unwrap()
                 .elements
                 .push(value.clone());
+
+            return Value::Void;
+        }
+
+        unreachable!()
+    }
+
+    fn list_pop(args: Vec<Value>) -> Value {
+        if let Value::Object(obj_ptr) = &args[0] {
+            let value = &args[1];
+
+            if let Value::Int(i) = value {
+                obj_ptr
+                    .borrow_mut()
+                    .as_any_mut()
+                    .downcast_mut::<List>()
+                    .unwrap()
+                    .elements
+                    .remove(*i as usize);
+            }
 
             return Value::Void;
         }
@@ -315,7 +335,8 @@ impl NativeLibrary for StdLibrary {
                 float,
                 random_range,
                 len,
-                append,
+                list_append,
+                list_pop,
                 args,
                 exit,
                 str_len,

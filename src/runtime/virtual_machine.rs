@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::{
     ffi::{NativeBridge, NativeFnPtr, NativeFunction, NativeLibrary},
     objects::{Instance, List, Value},
@@ -61,6 +63,7 @@ pub struct VirtualMachine {
     pub bytecode: Option<Bytecode>,
     native_functions: Vec<NativeFunction>,
     frame_stack: Vec<RefCell<Frame>>,
+    unsafe_mode: bool,
 }
 
 impl NativeBridge for VirtualMachine {
@@ -74,10 +77,15 @@ impl NativeBridge for VirtualMachine {
                 self.native_functions[index as usize] = NativeFunction::new(func, info.arity);
             }
 
-            None => gpp_error!(
-                "Linkage of '{}' function failed. Can't found native definition.",
-                name
-            ),
+            None => {
+                if !self.unsafe_mode {
+                    gpp_error!(
+                        "Unsafe config: {}. Linkage of '{}' function failed. Can't found native definition.",
+                        self.unsafe_mode,
+                        name
+                    )
+                }
+            }
         }
     }
 }
@@ -92,6 +100,7 @@ impl VirtualMachine {
             frame_stack: Vec::new(),
             native_functions: Vec::new(),
             bytecode: None,
+            unsafe_mode: true,
         }
     }
 

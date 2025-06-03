@@ -5,6 +5,8 @@ use std::{
     rc::Rc,
 };
 
+use crate::gpp_error;
+
 use super::{
     ast::FieldDeclaration,
     errors::{CompilationError, CompilerErrorReporter, ParseError},
@@ -73,6 +75,9 @@ impl Parser {
         }
 
         self.statements.push(Statement::EndCode);
+
+        // println!("{:#?}", self.statements);
+        // gpp_error!("");
 
         &self.statements
     }
@@ -672,6 +677,13 @@ impl Parser {
             String::from("Expect variable name after 'for'."),
         )?;
 
+        let index_name = Token::new(
+            TokenKind::Identifier,
+            "_".into(),
+            variable_name.line,
+            variable_name.column,
+        );
+
         self.eat(
             TokenKind::Keyword(KeywordKind::In),
             String::from("Expect 'in' after variable name."),
@@ -685,8 +697,68 @@ impl Parser {
         )?;
 
         let body = self.parse_scope()?;
+        let body = vec![
+            Rc::new(Statement::Expression(Expression::Assign(
+                variable_name.clone(),
+                Rc::new(Expression::ListGet(
+                    Box::new(iterator.clone()),
+                    Box::new(Expression::Variable(index_name.clone())),
+                )),
+            ))),
+            Rc::new(body),
+            Rc::new(Statement::Expression(Expression::PostFix(
+                Token::new(
+                    TokenKind::Operator(OperatorKind::PostFixIncrement),
+                    "++".into(),
+                    index_name.line,
+                    index_name.column,
+                ),
+                Rc::new(Expression::Variable(index_name.clone())),
+            ))),
+        ];
 
-        Ok(Statement::ForEach(variable_name, iterator, Box::new(body)))
+        Ok(Statement::Scope(vec![
+            Rc::new(Statement::Variable(variable_name.clone(), None)),
+            Rc::new(Statement::Variable(
+                index_name.clone(),
+                Some(Expression::Literal(Token::new(
+                    TokenKind::Literal(Literal::Int),
+                    "0".into(),
+                    index_name.line,
+                    index_name.column,
+                ))),
+            )),
+            Rc::new(Statement::While(
+                Expression::Arithmetic(
+                    Rc::new(Expression::Variable(index_name.clone())),
+                    Token::new(
+                        TokenKind::Operator(OperatorKind::Less),
+                        "<".into(),
+                        index_name.line,
+                        index_name.column,
+                    ),
+                    Rc::new(Expression::Call(
+                        Rc::new(Expression::Get(
+                            Rc::new(iterator.clone()),
+                            Token::new(
+                                TokenKind::Identifier,
+                                "length".into(),
+                                variable_name.line,
+                                variable_name.column,
+                            ),
+                        )),
+                        Token::new(
+                            TokenKind::Punctuation(PunctuationKind::RightParen),
+                            ")".into(),
+                            variable_name.line,
+                            variable_name.column,
+                        ),
+                        vec![],
+                    )),
+                ),
+                Box::new(Statement::Scope(body)),
+            )),
+        ]))
     }
 
     fn import_statement(&mut self) -> Result<Statement, ParseError> {
@@ -812,6 +884,10 @@ impl Parser {
 
                 Expression::Get(object, name) => {
                     return Ok(Expression::Set(object, name, Rc::new(value)));
+                }
+
+                Expression::ListGet(target, index) => {
+                    return Ok(Expression::ListSet(target, index, Rc::new(value)));
                 }
 
                 _ => {

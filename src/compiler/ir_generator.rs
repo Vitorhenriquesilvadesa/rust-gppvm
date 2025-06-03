@@ -234,7 +234,9 @@ impl IRGenerator {
                     self.emit_byte(&mut code, byte);
                 }
             }
-            None => {}
+            None => {
+                self.emit_instruction(&mut code, Instruction::Void);
+            }
         }
 
         code

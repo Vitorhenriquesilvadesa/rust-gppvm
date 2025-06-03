@@ -1,74 +1,13 @@
-================= pow (id = 0; arity = 2) ==================
-|000  getlocal0
-|001  push            0   ; Int(1)
-|004  getlocal1
-|005  greater
-|006  jfalse              ; 12
+================= main (id = 0; arity = 0) =================
+|000  push            0   ; Int(1)
+|003  push            1   ; Int(2)
+|006  push            2   ; Int(3)
+|009  array           3
 |011  getlocal0
-|012  getlocal2
-|013  mul
-|014  setlocal        2
-|016  decrementlocal  1
-|018  loop                ; 22
-|023  getlocal2
-|024  ret
-|025  pop
-|026  pop
-|027  pop
-|028  void
-|029  ret
-============================================================
-
-
-================= main (id = 3; arity = 0) =================
-|000  push            0   ; Float(0.4)
-|003  push            1   ; Float(1.2)
-|006  push            2   ; Float(3.3)
-|009  new             3
-|011  push            3   ; String("Fulano")
-|014  push            4   ; Int(30)
-|017  new             2
-|019  getlocal0
-|020  getfield        0
-|022  getlocal0
-|023  getfield        1
-|025  getlocal0
-|026  getfield        2
-|028  getlocal1
-|029  getfield        0
-|031  getlocal1
-|032  getfield        1
-|034  push            5   ; Int(0)
-|037  push            6   ; Int(10)
-|040  not
-|041  getlocal        7
-|043  greater
-|044  jfalse              ; 37
-|049  push            5   ; Int(0)
-|052  push            6   ; Int(10)
-|055  getlocal        8
-|057  less
-|058  jfalse              ; 7
-|063  incrementlocal  8
-|065  loop                ; 18
-|070  getlocal        7
-|072  invokenative    1   ; (1 args)
-|078  decrementlocal  7
-|080  pop
-|081  loop                ; 49
-|086  push            6   ; Int(10)
-|089  push            7   ; Int(3)
-|092  call            0   ; pow (2 args)
-|098  invokenative    1   ; (1 args)
-|104  getlocal2
-|105  invokenative    1   ; (1 args)
-|111  pop
-|112  pop
-|113  pop
-|114  pop
-|115  pop
-|116  pop
-|117  pop
-|118  pop
-|119  halt
+|012  getlocal0
+|013  invokevirtual   1   ; (2 args)
+|023  getlocal0
+|024  invokenative    0   ; (1 args)
+|030  pop
+|031  halt
 ============================================================

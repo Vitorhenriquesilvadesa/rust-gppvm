@@ -470,6 +470,12 @@ pub enum AnnotatedExpression {
         Vec<Box<AnnotatedExpression>>,
         Rc<RefCell<TypeDescriptor>>,
     ),
+    ListSet(
+        Box<AnnotatedExpression>,
+        Box<AnnotatedExpression>,
+        Box<AnnotatedExpression>,
+        Rc<RefCell<TypeDescriptor>>,
+    ),
 }
 
 #[derive(Debug, Clone)]

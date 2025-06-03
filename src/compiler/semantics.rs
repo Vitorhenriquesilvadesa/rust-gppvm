@@ -12,7 +12,9 @@ use std::{
     string,
 };
 
-use crate::gpp_error;
+use rand::seq::index;
+
+use crate::{gpp_error, runtime::objects::List};
 
 use super::{
     ast::FieldDeclaration,
@@ -345,6 +347,7 @@ impl SemanticAnalyzer {
             Statement::DestructurePattern(fields, value) => {
                 self.analyze_destructure_pattern(fields, value)
             }
+            Statement::Scope(stmts) => self.analyze_scope(stmts),
             _ => gpp_error!("Statement {:?} not supported.", stmt),
         }
     }
@@ -372,6 +375,7 @@ impl SemanticAnalyzer {
         self.begin_scope();
 
         let annotated_iterator: AnnotatedExpression;
+        let iterator_kind: Rc<RefCell<TypeDescriptor>>;
 
         match condition {
             Expression::Variable(variable) => {
@@ -381,13 +385,14 @@ impl SemanticAnalyzer {
                     "Expect iterator in 'for' loop.",
                 );
 
+                iterator_kind = self.resolve_identifier_type(variable);
                 annotated_iterator = self.analyze_expr(condition);
             }
 
             Expression::Call(callee, paren, args) => {
-                let kind = self.resolve_function_return_type(callee, paren, args);
+                iterator_kind = self.resolve_function_return_type(callee, paren, args);
                 self.assert_kind_equals(
-                    kind,
+                    iterator_kind.clone(),
                     self.get_static_kind_by_name("iterator"),
                     "Expect iterator in for each declaration.".to_string(),
                 );
@@ -396,8 +401,7 @@ impl SemanticAnalyzer {
             }
 
             _ => {
-                let iterator_kind: Rc<RefCell<TypeDescriptor>> =
-                    self.resolve_iterator_kind(condition);
+                iterator_kind = self.resolve_iterator_kind(condition);
                 annotated_iterator = self.analyze_expr(condition);
             }
         }
@@ -973,6 +977,9 @@ impl SemanticAnalyzer {
             Expression::Attribute(token, expressions) => self.analyze_attribute(token, expressions),
             Expression::Group(expression) => self.analyze_expr(&expression),
             Expression::ListGet(expression, index) => self.analyze_list_get_expr(expression, index),
+            Expression::ListSet(list, index, value) => {
+                self.analyze_list_set_expr(list, index, value)
+            }
         }
     }
 
@@ -1561,7 +1568,11 @@ impl SemanticAnalyzer {
             if let Expression::Literal(l) = left {
                 annotated_left = self.analyze_literal(l.clone());
             } else {
-                gpp_error!("Invalid literal kind. At line {}.", token.line);
+                gpp_error!(
+                    "Invalid literal '{}' kind. At line {}.",
+                    token.lexeme,
+                    token.line
+                );
             }
         }
 
@@ -1571,7 +1582,11 @@ impl SemanticAnalyzer {
             if let Expression::Literal(l) = right {
                 annotated_right = self.analyze_literal(l.clone());
             } else {
-                gpp_error!("Invalid literal kind. At line {}.", token.line);
+                gpp_error!(
+                    "Invalid literal '{}' kind. At line {}.",
+                    token.lexeme,
+                    token.line
+                );
             }
         }
 
@@ -1883,21 +1898,28 @@ impl SemanticAnalyzer {
                         );
                     }
 
-                    for i in 0..(args.len()) {
-                        let param_kind = &method.params[i];
-                        let arg_kind = self.resolve_expr_type(&args[i]);
+                    annotated_args.push(Box::new(self.analyze_expr(&callee)));
 
-                        if arg_kind.borrow().id != param_kind.kind.borrow().id {
-                            gpp_error!(
-                                "Expect '{}' instance for '{}' param, but got '{}'.",
-                                param_kind.kind.borrow().name,
-                                param_kind.name,
-                                arg_kind.borrow().name
+                    if method.arity > 1 {
+                        for i in 0..(args.len()) {
+                            let param_kind = &method.params[i + 1];
+                            let arg_kind = self.resolve_expr_type(&args[i]);
+
+                            self.assert_archetype_kind(
+                                &args[i],
+                                param_kind.kind.clone(),
+                                format!(
+                                    "Expect '{}' to '{}' param, but got '{}'.",
+                                    param_kind.name,
+                                    method.params[i + 1].name,
+                                    param_kind.name
+                                )
+                                .as_str(),
                             );
-                        }
 
-                        let annotated_arg = self.analyze_expr(&args[i]);
-                        annotated_args.push(Box::new(annotated_arg));
+                            let annotated_arg = self.analyze_expr(&args[i]);
+                            annotated_args.push(Box::new(annotated_arg));
+                        }
                     }
 
                     return AnnotatedExpression::CallMethod(
@@ -2559,7 +2581,11 @@ impl SemanticAnalyzer {
                 Literal::String => self.symbol_table.get("str").unwrap().kind.clone(),
             }
         } else {
-            gpp_error!("Invalid literal kind. At line {}.", literal.line);
+            gpp_error!(
+                "Invalid literal '{:?}' kind. At line {}.",
+                literal,
+                literal.line
+            );
         }
     }
 
@@ -2949,5 +2975,39 @@ impl SemanticAnalyzer {
         }
 
         declarations
+    }
+
+    fn analyze_list_set_expr(
+        &mut self,
+        list: Box<Expression>,
+        index: Box<Expression>,
+        value: Rc<Expression>,
+    ) -> AnnotatedExpression {
+        let annotated_list = self.analyze_expr(&list);
+        let annotated_index = self.analyze_expr(&index);
+        let annotated_value = self.analyze_expr(&value);
+        let kind = self.resolve_expr_type(&list);
+
+        AnnotatedExpression::ListSet(
+            Box::new(annotated_list),
+            Box::new(annotated_index),
+            Box::new(annotated_value),
+            kind,
+        )
+    }
+
+    fn analyze_scope(&mut self, stmts: &Vec<Rc<Statement>>) -> Vec<AnnotatedStatement> {
+        let mut annotated_stmts: Vec<AnnotatedStatement> = Vec::new();
+
+        self.begin_scope();
+
+        for stmt in stmts {
+            let mut annotated_stmt = self.analyze_stmt(stmt);
+            annotated_stmts.append(&mut annotated_stmt);
+        }
+
+        self.end_scope();
+
+        annotated_stmts
     }
 }

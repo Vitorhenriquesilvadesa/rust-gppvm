@@ -1,6 +1,11 @@
-use std::{ fmt::{ self, Display }, rc::Rc };
+use std::{
+    fmt::{self, Display},
+    rc::Rc,
+};
 
-use crate::compiler::expressions;
+use rand::seq::index;
+
+use crate::{compiler::expressions, runtime::objects::List};
 
 use super::lexer::Token;
 
@@ -25,11 +30,15 @@ pub enum Expression {
     Group(Rc<Expression>),
     Void,
     ListGet(Box<Expression>, Box<Expression>),
+    ListSet(Box<Expression>, Box<Expression>, Rc<Expression>),
 }
 
 impl Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Expression::ListSet(list, index, value) => {
+                write!(f, "ListSet({}[{}] = {})", list, index, value)
+            }
             Expression::Literal(token) => write!(f, "{}", token),
             Expression::Unary(op, expr) => write!(f, "({} {})", op, expr),
             Expression::PostFix(op, var) => write!(f, "({} {})", op.lexeme, var),
@@ -41,8 +50,9 @@ impl Display for Expression {
             Expression::Assign(var, expr) => write!(f, "({} = {})", var, expr),
             Expression::Lambda => write!(f, "(lambda)"),
             Expression::Get(object, field) => write!(f, "Get({}.{})", object, field),
-            Expression::ListGet(expression, index) =>
-                write!(f, "ListGet({}.{})", expression, index),
+            Expression::ListGet(expression, index) => {
+                write!(f, "ListGet({}.{})", expression, index)
+            }
             Expression::Set(object, field, value) => {
                 write!(f, "Set({}.{} = {})", object, field, value)
             }

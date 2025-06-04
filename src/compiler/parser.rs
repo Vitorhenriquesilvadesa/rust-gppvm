@@ -1151,6 +1151,10 @@ impl Parser {
         }
 
         if self.try_eat(&[TokenKind::Identifier]) {
+            let id = self.previous();
+            if self.try_eat(&[TokenKind::Punctuation(PunctuationKind::Dot)]) {
+                return self.literal_get(Expression::Variable(id));
+            }
             return Ok(Expression::Variable(self.previous()));
         }
 

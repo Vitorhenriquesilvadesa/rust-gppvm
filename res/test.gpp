@@ -1,24 +1,18 @@
-import stdlib.math;
-import person;
-
-def get_point() -> Vec2 {
-    let x;
-    let y;
-
-    print("Insira a coordenada X: ");
-    x = input();
-    print("Insira a coordenada Y: ");
-    y = input();
-    println("");
-
-    return Vec2(float(x), float(y));
-}
+import stdlib.net.http;
 
 def main() -> void {
-    let p1 = get_point();
-    let p2 = get_point();
+    let request = http_request_builder()
+        .method("GET")
+        .url("https://google.com")
+        .body("")
+        .build();
 
-    print("Distancia entre os pontos: ");
-    println(p1.distance(p2));
-    println("");
+    let response = http_request(request);
+
+    let { status_code, body } = response;
+    
+    if status_code == 200 {
+        println(status_code);
+    }
 }
+

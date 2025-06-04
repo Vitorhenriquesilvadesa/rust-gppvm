@@ -420,18 +420,39 @@ impl Lexer {
     }
 
     fn string(&mut self, end: char) -> Result<(), String> {
-        loop {
+        let mut value = String::new();
+        let mut escaped = false;
+
+        while !self.is_at_end() {
             let c = self.peek();
 
-            if c == end {
+            if escaped {
+                let escape_char = match c {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '"' => '"',
+                    '\'' => '\'',
+                    other => other,
+                };
+                value.push(escape_char);
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == end {
                 break;
+            } else {
+                value.push(c);
             }
+
             if c == '\n' {
                 self.line += 1;
                 self.column = 0;
             } else {
                 self.column += 1;
             }
+
             self.advance();
         }
 
@@ -441,9 +462,6 @@ impl Lexer {
 
         self.advance();
 
-        let value: String = self.source[self.start + 1..self.start + self.length - 1]
-            .iter()
-            .collect();
         self.make_token_with_lexeme(TokenKind::Literal(Literal::String), value);
 
         Ok(())

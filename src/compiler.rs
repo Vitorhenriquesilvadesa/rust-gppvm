@@ -31,8 +31,8 @@ use std::{
     io::{self, Read},
 };
 
-use crate::runtime::stdlib::StdLibrary;
 use crate::runtime::virtual_machine::VirtualMachine;
+use crate::stdlib::StdLibrary;
 use crate::{gpp_error, read_file_without_bom};
 
 use self::{lexer::Lexer, parser::Parser};
@@ -133,14 +133,14 @@ impl Compiler {
             .ir_generator
             .generate(Rc::clone(&self.reporter), &semantic_code);
 
-        //Decompiler::decompile(&ir_code);
+        Decompiler::decompile(&ir_code);
 
         let bytecode_generator = BytecodeGenerator::new();
         let bytecode = bytecode_generator.generate(&ir_code);
 
         let mut vm = VirtualMachine::new();
         vm.attach_bytecode(&bytecode);
-        vm.load_library(&mut StdLibrary::get_lib());
+        StdLibrary::register_std_libraries(&mut vm);
         vm.interpret();
 
         for error in self.reporter.borrow().get_errors() {

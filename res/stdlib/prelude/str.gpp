@@ -31,7 +31,7 @@ internal def index_of(self: str, substr: str) -> int {
     return str_find(self, substr);
 }
 
-internal def slice(self: str, start: int, end: int) -> str {
+internal def sub_str(self: str, start: int, end: int) -> str {
     return str_slice(self, start, end);
 }
 

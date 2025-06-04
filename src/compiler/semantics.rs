@@ -1865,7 +1865,7 @@ impl SemanticAnalyzer {
                         );
                     }
 
-                    self.assert_function_args(prototype.clone(), args);
+                    self.assert_function_args(prototype.clone(), args, paren);
                     AnnotatedExpression::Call(
                         prototype.clone(),
                         paren.clone(),
@@ -1886,7 +1886,7 @@ impl SemanticAnalyzer {
                             );
                         }
 
-                        self.assert_function_args(prototype.clone(), args);
+                        self.assert_function_args(prototype.clone(), args, paren);
                         AnnotatedExpression::CallNative(
                             prototype.clone(),
                             paren.clone(),
@@ -1930,10 +1930,11 @@ impl SemanticAnalyzer {
                                 &args[i],
                                 param_kind.kind.clone(),
                                 format!(
-                                    "Expect '{}' to '{}' param, but got '{}'.",
+                                    "Expect '{}' to '{}' param, but got '{}'. At line {}.",
                                     param_kind.name,
                                     method.params[i + 1].name,
-                                    param_kind.name
+                                    param_kind.name,
+                                    paren.line,
                                 )
                                 .as_str(),
                             );
@@ -2045,7 +2046,12 @@ impl SemanticAnalyzer {
     ///
     /// # Errors
     /// - Raises an error if any of the argument types do not match the expected types.
-    fn assert_function_args(&mut self, prototype: FunctionPrototype, args: &Vec<Expression>) {
+    fn assert_function_args(
+        &mut self,
+        prototype: FunctionPrototype,
+        args: &Vec<Expression>,
+        paren: &Token,
+    ) {
         for (index, arg) in args.iter().enumerate() {
             let proto_arg_kind = self.resolve_expr_type(&prototype.params[index].kind);
             let passed_arg_kind = self.resolve_expr_type(arg);
@@ -2054,10 +2060,11 @@ impl SemanticAnalyzer {
                 arg,
                 proto_arg_kind.clone(),
                 format!(
-                    "Expect '{}' to '{}' param, but got '{}'.",
+                    "Expect '{}' to '{}' param, but got '{}'. At line {}.",
                     proto_arg_kind.borrow().name,
                     prototype.params[index].name.lexeme,
-                    passed_arg_kind.borrow().name
+                    passed_arg_kind.borrow().name,
+                    paren.line
                 )
                 .as_str(),
             );
@@ -2466,8 +2473,13 @@ impl SemanticAnalyzer {
                     }
 
                     Some(type_descriptor) => {
-                        match type_descriptor.borrow().methods.get(&field.lexeme) {
-                            None => match type_descriptor.borrow().fields.get(&field.lexeme) {
+                        match type_descriptor.borrow().fields.get(&field.lexeme) {
+                            Some(field_decl) => Some(field_decl.kind.clone()),
+                            None => match type_descriptor.borrow().methods.get(&field.lexeme) {
+                                Some(method_decl) => Some(
+                                    self.get_static_kind_by_id(method_decl.return_kind_id)
+                                        .clone(),
+                                ),
                                 None => {
                                     gpp_error!(
                                         "Variable '{}' is a '{}' instance and not have '{}' field.",
@@ -2476,12 +2488,7 @@ impl SemanticAnalyzer {
                                         field.lexeme.clone()
                                     );
                                 }
-                                Some(field_decl) => Some(field_decl.kind.clone()),
                             },
-                            Some(field_decl) => Some(
-                                self.get_static_kind_by_id(field_decl.return_kind_id)
-                                    .clone(),
-                            ),
                         }
                     }
                 };

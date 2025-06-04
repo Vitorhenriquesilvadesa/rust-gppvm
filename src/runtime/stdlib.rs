@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 use std::fs::{write, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{
     cell::RefCell,
     env,
@@ -112,11 +112,45 @@ impl StdLibrary {
         }
     }
 
+    fn get_current_dir() -> String {
+        let current_dir = env::current_dir().unwrap();
+        return current_dir.to_str().unwrap().into();
+    }
+
+    fn get_full_path(path: String) -> PathBuf {
+        let current_path = format!(
+            "{}{}{}",
+            env::current_dir()
+                .map_err(|e| e.to_string())
+                .unwrap()
+                .to_str()
+                .unwrap_or(""),
+            std::path::MAIN_SEPARATOR,
+            env::args().into_iter().collect::<Vec<String>>()[2].as_str()
+        );
+
+        let full_path = PathBuf::from(&current_path);
+
+        let root = full_path
+            .parent()
+            .ok_or("Cannot get parent directory.")
+            .unwrap()
+            .to_path_buf();
+
+        let absolute_path = root.join(&path);
+
+        return absolute_path;
+    }
+
     pub fn read_file(args: Vec<Value>) -> Value {
         if let Some(Value::String(path)) = args.first() {
-            match read_file_without_bom(path) {
+            let path = StdLibrary::get_full_path(path.to_string());
+
+            match read_file_without_bom(&path.to_str().unwrap()) {
                 Ok(content) => Value::String(Rc::new(content)),
-                Err(_) => Value::String(Rc::new("".to_string())),
+                Err(e) => {
+                    gpp_error!("Cannot read file '{}': {}", path.to_str().unwrap(), e);
+                }
             }
         } else {
             Value::String(Rc::new("".to_string()))
@@ -126,7 +160,7 @@ impl StdLibrary {
     pub fn write_file(args: Vec<Value>) -> Value {
         if args.len() == 2 {
             if let (Value::String(path), Value::String(content)) = (&args[0], &args[1]) {
-                let _ = write(Path::new(&**path), &**content);
+                let _ = write(StdLibrary::get_full_path(path.to_string()), &**content);
             }
         }
         Value::Void
@@ -135,7 +169,11 @@ impl StdLibrary {
     pub fn append_file(args: Vec<Value>) -> Value {
         if args.len() == 2 {
             if let (Value::String(path), Value::String(content)) = (&args[0], &args[1]) {
-                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&**path) {
+                if let Ok(mut file) = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(StdLibrary::get_full_path(path.to_string()))
+                {
                     let _ = writeln!(file, "{}", &**content);
                 }
             }
@@ -169,6 +207,14 @@ impl StdLibrary {
     fn int_to_float(args: Vec<Value>) -> Value {
         if let Value::Int(i) = &args[0] {
             return Value::Float(*i as f32);
+        }
+
+        unreachable!("Found value '{}'.", &args[0]);
+    }
+
+    fn int_to_string(args: Vec<Value>) -> Value {
+        if let Value::Int(i) = &args[0] {
+            return Value::String(Rc::new(i.to_string()));
         }
 
         unreachable!("Found value '{}'.", &args[0]);
@@ -475,6 +521,7 @@ impl NativeLibrary for StdLibrary {
                 str_find,
                 int_abs,
                 int_is_even,
+                int_to_string,
                 int_is_odd,
                 int_sign,
                 int_max,

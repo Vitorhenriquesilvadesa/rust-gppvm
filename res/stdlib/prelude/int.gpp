@@ -7,9 +7,14 @@ native def int_min(a: int, b: int) -> int;
 native def int_clamp(x: int, min: int, max: int) -> int;
 native def int_to_float(value: int) -> float;
 native def int_sqrt(value: int) -> float;
+native def int_to_string(value: int) -> str;
 
 internal def abs(self: int) -> int {
     return int_abs(self);
+}
+
+internal def to_string(self: int) -> str{
+    return int_to_string(self);
 }
 
 internal def sqrt(self: int) -> float{

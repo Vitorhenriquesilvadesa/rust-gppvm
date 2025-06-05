@@ -1,1 +1,1 @@
-cargo run -- -c res/test.gpp
+cargo run -- -c res/main.gpp

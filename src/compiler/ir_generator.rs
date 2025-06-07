@@ -287,6 +287,10 @@ impl IRGenerator {
                 self.generate_arithmetic_expr_ir(left, op, right, &kind.borrow())
             }
 
+            AnnotatedExpression::Logical(left, op, right, kind) => {
+                self.generate_logical_expr_ir(left, op, right, &kind.borrow())
+            }
+
             AnnotatedExpression::PostFix(operator, variable) => {
                 self.generate_postfix_expr_ir(operator, variable)
             }
@@ -445,7 +449,8 @@ impl IRGenerator {
                 OperatorKind::Plus => Instruction::Add,
                 OperatorKind::Minus => Instruction::Sub,
                 OperatorKind::Not => Instruction::Not,
-                OperatorKind::EqualEqual => Instruction::Cmp,
+                OperatorKind::EqualEqual => Instruction::Eq,
+                OperatorKind::NotEqual => Instruction::Neq,
                 OperatorKind::BitwiseAnd => Instruction::BitAnd,
                 OperatorKind::BitwiseOr => Instruction::BitOr,
                 OperatorKind::DoubleStar => Instruction::Pow,
@@ -837,9 +842,10 @@ impl IRGenerator {
 
     fn generate_native_function_ir(&mut self, prototype: &FunctionPrototype) -> Vec<u8> {
         let id = self.get_native_id();
+
         self.native_functions.insert(
             prototype.name.clone(),
-            NativeFunctionInfo::new(prototype.arity as u8, id),
+            NativeFunctionInfo::new(prototype.arity as u8, id.clone()),
         );
 
         vec![]
@@ -951,6 +957,26 @@ impl IRGenerator {
         code.push(ir_method.arity as u8);
 
         code
+    }
+
+    fn generate_logical_expr_ir(
+        &mut self,
+        left: &AnnotatedExpression,
+        op: &Token,
+        right: &AnnotatedExpression,
+        borrow: &std::cell::Ref<'_, TypeDescriptor>,
+    ) -> Vec<u8> {
+        let mut right_bytes = self.generate_expr_ir(left);
+        let mut left_bytes = self.generate_expr_ir(right);
+        let mut operator = self.convert_operator_to_instruction(op) as u8;
+
+        let mut all_bytes: Vec<u8> = Vec::new();
+
+        all_bytes.append(&mut left_bytes);
+        all_bytes.append(&mut right_bytes);
+        all_bytes.push(operator);
+
+        all_bytes
     }
 }
 

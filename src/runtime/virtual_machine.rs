@@ -73,7 +73,7 @@ impl NativeBridge for VirtualMachine {
         match func_info {
             Some(info) => {
                 let index = info.id;
-                println!("Linking: {} function.", name);
+                println!("ID: {} - Linking: {} function.", index, name);
                 self.native_functions[index as usize] = NativeFunction::new(func, info.arity);
             }
 
@@ -123,6 +123,54 @@ impl VirtualMachine {
                 self.push(Value::Float(a + (b as f32)));
             }
             _ => {}
+        }
+    }
+
+    #[inline]
+    pub fn handle_and(&mut self) {
+        let a = self.pop();
+        let b = self.pop();
+
+        match (a, b) {
+            (Value::Bool(a), Value::Bool(b)) => {
+                self.push(Value::Bool(a && b));
+            }
+
+            _ => {
+                gpp_error!("Attempt to handle 'and' in not bool values.");
+            }
+        }
+    }
+
+    #[inline]
+    fn handle_eq(&mut self) {
+        let a = self.pop();
+        let b = self.pop();
+
+        self.push(Value::Bool(a == b));
+    }
+
+    #[inline]
+    fn handle_neq(&mut self) {
+        let a = self.pop();
+        let b = self.pop();
+
+        self.push(Value::Bool(a != b));
+    }
+
+    #[inline]
+    pub fn handle_or(&mut self) {
+        let a = self.pop();
+        let b = self.pop();
+
+        match (a, b) {
+            (Value::Bool(a), Value::Bool(b)) => {
+                self.push(Value::Bool(a || b));
+            }
+
+            _ => {
+                gpp_error!("Attempt to handle 'or' in not bool values.");
+            }
         }
     }
 
@@ -611,17 +659,16 @@ impl VirtualMachine {
     }
 
     fn invalidate_native_call(_: Vec<Value>) -> Value {
-        println!("Invalid native call index!");
+        println!("Invalid native call index detected!");
         std::process::exit(0);
     }
 
     pub fn attach_bytecode(&mut self, bytecode: &Bytecode) {
         self.bytecode = Some(bytecode.clone());
         self.attach_main_fn();
-        self.native_functions = vec![
-            NativeFunction::new(Self::invalidate_native_call, 0);
-            bytecode.native_functions.len() + 1
-        ];
+
+        // TODO: Fix the native functions detection
+        self.native_functions = vec![NativeFunction::new(Self::invalidate_native_call, 0); 1 << 15];
     }
 
     pub fn interpret(&mut self) {
@@ -642,11 +689,15 @@ impl VirtualMachine {
 
             match instruction {
                 Instruction::Add => self.handle_add(),
+                Instruction::And => self.handle_and(),
+                Instruction::Or => self.handle_or(),
                 Instruction::Sub => self.handle_sub(),
                 Instruction::Mul => self.handle_mul(),
                 Instruction::Div => self.handle_div(),
                 Instruction::Greater => self.handle_greater(),
                 Instruction::Less => self.handle_less(),
+                Instruction::Eq => self.handle_eq(),
+                Instruction::Neq => self.handle_neq(),
                 Instruction::GreaterEqual => self.handle_greater_equal(),
                 Instruction::LessEqual => self.handle_less_equal(),
                 Instruction::Cmp => self.handle_cmp(),

@@ -19,7 +19,6 @@ pub enum TokenKind {
     Identifier,
     EndOfFile,
     Underscore,
-    Dot,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

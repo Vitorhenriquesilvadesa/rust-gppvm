@@ -20,7 +20,7 @@ impl NativeLibrary for GPPPreludeLibrary {
 
         native_libs.push(Box::new(GPPFloatLibrary {}));
         native_libs.push(Box::new(GPPIntLibrary {}));
-        native_libs.push(Box::new(GPPListLibrary {}));
+        // native_libs.push(Box::new(GPPListLibrary {}));
         native_libs.push(Box::new(GPPStringNativeLibrary {}));
         native_libs.push(Box::new(GPPDefaultFunctionsNativeLibrary {}));
 

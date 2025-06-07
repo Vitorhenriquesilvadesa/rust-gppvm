@@ -359,7 +359,16 @@ impl SemanticAnalyzer {
             Statement::DestructurePattern(fields, value) => {
                 self.analyze_destructure_pattern(fields, value)
             }
-            Statement::Scope(stmts) => self.analyze_scope(stmts),
+            Statement::Scope(stmts) => {
+                let stmts = self.analyze_scope(stmts);
+                let mut boxed_statements: Vec<Box<AnnotatedStatement>> = Vec::new();
+
+                for stmt in stmts {
+                    boxed_statements.push(Box::new(stmt));
+                }
+
+                vec![AnnotatedStatement::Scope(boxed_statements)]
+            }
             Statement::Import(module) => self.analyze_import(module),
             Statement::EndCode => {
                 vec![]
@@ -2753,6 +2762,10 @@ impl SemanticAnalyzer {
                 name.line
             ),
         );
+
+        if let Some(f) = self.get_native_function(&name.lexeme) {
+            gpp_error!("The native definition of '{}' already exists.", name.lexeme);
+        }
 
         self.current_symbol_kind = SymbolKind::Function;
 

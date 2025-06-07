@@ -123,8 +123,8 @@ impl Decompiler {
                         let arity = code[*index + 9];
 
                         println!(
-                            "{}  {} {}   ; ({} args)",
-                            instr_index, padded_instruction, function_index, arity
+                            "{}  {} V{} Fn{}   ; ({} args)",
+                            instr_index, padded_instruction, vtable_index, function_index, arity
                         );
 
                         *index += 9;
@@ -159,10 +159,6 @@ impl Decompiler {
 
                         println!("{}  {} {}", instr_index, padded_instruction, field_index);
                         *index += 1;
-                    }
-
-                    Instruction::Greater => {
-                        println!("{} greater", instr_index);
                     }
 
                     Instruction::JFalse
@@ -214,8 +210,8 @@ impl Decompiler {
                 format!(
                     "{:=^1$}",
                     format!(
-                        " {} (type = {}, arity = {}) ",
-                        method.name, descriptor.name, method.arity
+                        " {} Fn{} (type = {}, id {}, arity = {}) ",
+                        method.name, method.id, descriptor.name, descriptor.id, method.arity
                     ),
                     width
                 )
